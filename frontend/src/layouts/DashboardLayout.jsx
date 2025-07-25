@@ -1,14 +1,15 @@
 import { useState, useRef } from "react";
-import { Link, Outlet, useLocation } from "react-router-dom";
-import { Home, Users, FileText, BarChart, Menu, User } from "lucide-react";
+import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Home, Users, FileText, BarChart, Menu, User, Plus, Settings } from "lucide-react";
 
 export default function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownTimer = useRef(null);
   const location = useLocation();
+  const navigate = useNavigate();
 
-  const companyName = "Dream Builders"; // Will be dynamic later
+  const companyName = "Dream Builders"; // Dynamic later
 
   const navLinks = [
     { path: "/dashboard", label: "Dashboard", icon: <Home size={18} /> },
@@ -25,8 +26,12 @@ export default function DashboardLayout() {
   const closeDropdown = () => {
     dropdownTimer.current = setTimeout(() => {
       setDropdownOpen(false);
-    }, 200); // small delay so it doesn’t flicker
+    }, 200);
   };
+
+  // Check active pages to show the correct action button
+  const isClientsPage = location.pathname === "/clients";
+  const isInvoicesPage = location.pathname === "/invoices";
 
   return (
     <div className="flex h-screen font-sans bg-gray-50">
@@ -36,12 +41,10 @@ export default function DashboardLayout() {
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         } md:translate-x-0 transition-transform duration-300 shadow-xl z-50`}
       >
-        {/* Brand */}
         <div className="p-5 text-2xl font-extrabold tracking-wide border-b border-gray-700">
           Joslasync
         </div>
 
-        {/* Navigation */}
         <nav className="flex-1 p-5 space-y-3 overflow-y-auto text-gray-300">
           {navLinks.map(({ path, label, icon }) => (
             <Link
@@ -58,13 +61,11 @@ export default function DashboardLayout() {
           ))}
         </nav>
 
-        {/* Sidebar footer */}
         <div className="p-5 border-t border-gray-700 text-xs text-gray-400">
           Logged in as <b>Master</b>
         </div>
       </aside>
 
-      {/* Mobile overlay */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black bg-opacity-40 z-40 md:hidden"
@@ -72,11 +73,11 @@ export default function DashboardLayout() {
         ></div>
       )}
 
-      {/* Right section */}
+      {/* Main Section */}
       <div className="flex flex-col flex-1 min-h-screen">
         {/* Topbar */}
         <header className="bg-white shadow-md p-4 flex items-center justify-between sticky top-0 z-40">
-          {/* Mobile menu button */}
+          {/* Mobile toggle */}
           <button
             className="md:hidden text-gray-700 hover:text-blue-600"
             onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -89,7 +90,7 @@ export default function DashboardLayout() {
             {companyName} Dashboard
           </h1>
 
-          {/* Profile dropdown with delay */}
+          {/* Profile Dropdown */}
           <div
             className="relative"
             onMouseEnter={openDropdown}
@@ -101,13 +102,23 @@ export default function DashboardLayout() {
 
             {dropdownOpen && (
               <div
-                className="absolute right-0 mt-2 w-52 bg-white border rounded-lg shadow-lg"
-                onMouseEnter={openDropdown}   // keep open while hovering menu
-                onMouseLeave={closeDropdown}  // close when leaving icon + menu (with delay)
+                className="absolute right-0 mt-2 w-56 bg-white border rounded-lg shadow-lg"
+                onMouseEnter={openDropdown}
+                onMouseLeave={closeDropdown}
               >
-                <div className="px-4 py-2 text-gray-600 text-sm border-b">
+                {/* Profile */}
+                <button
+                  onClick={() => navigate("/profile")}
+                  className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-600 hover:bg-gray-100"
+                >
+                  <Settings size={16} />
+                  Profile & Settings
+                </button>
+
+                <div className="px-4 py-2 text-gray-600 text-sm border-t">
                   Logged in as <b>Master</b>
                 </div>
+
                 <button className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-gray-100">
                   Logout
                 </button>
@@ -116,12 +127,33 @@ export default function DashboardLayout() {
           </div>
         </header>
 
-        {/* Page header */}
-        <div className="w-full p-4 border-y bg-white shadow-sm text-lg font-semibold text-gray-800">
-          {navLinks.find(link => link.path === location.pathname)?.label || "Page"}
+        {/* Page Header (Title + Contextual Action Buttons) */}
+        <div className="w-full p-4 border-y bg-white shadow-sm flex justify-between items-center">
+          <span className="text-lg font-semibold text-gray-800">
+            {navLinks.find((link) => link.path === location.pathname)?.label || "Page"}
+          </span>
+
+          {/* Action Buttons for Clients or Invoices */}
+          {isClientsPage && (
+            <button
+              onClick={() => navigate("/clients/add")}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition shadow"
+            >
+              <Plus size={18} /> Add Client
+            </button>
+          )}
+
+          {isInvoicesPage && (
+            <button
+              onClick={() => navigate("/invoices/create")}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition shadow"
+            >
+              <Plus size={18} /> Create Invoice
+            </button>
+          )}
         </div>
 
-        {/* Main content */}
+        {/* Main Content */}
         <main className="flex-1 p-6 overflow-y-auto">
           <Outlet />
         </main>

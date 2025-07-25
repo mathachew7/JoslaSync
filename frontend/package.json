@@ -2,6 +2,7 @@
   "name": "frontend",
   "private": true,
   "version": "0.0.0",
+  "homepage": ".",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,10 +12,14 @@
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^3.0.1",
+    "jspdf-autotable": "^5.0.2",
     "lucide-react": "^0.525.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.7.0",
+    "recharts": "^3.1.0",
     "tailwind-variants": "^1.0.0"
   },
   "devDependencies": {
