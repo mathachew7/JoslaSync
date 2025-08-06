@@ -35,6 +35,9 @@ interface InvoiceData {
   shippingCity?: string;
   shippingZip?: string;
   shippingCountry?: string;
+  additionalInformation?: string;
+  status?: string;
+
 }
 
 /**
@@ -100,7 +103,7 @@ export const generateInvoicePdf = (data: InvoiceData) => {
 
   doc.setFontSize(14);
   doc.setFont("helvetica", "bold");
-  doc.text(data.invoiceTitle || "INVOICE", headerRightX, headerRightY, { align: "right" });
+  doc.text(`${(data.status || "INVOICE").toUpperCase()}`, headerRightX, headerRightY, { align: "right" });
   headerRightY += 8;
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
@@ -117,9 +120,23 @@ export const generateInvoicePdf = (data: InvoiceData) => {
   // --- Thin Underline below header ---
   doc.setLineWidth(0.1);
   doc.setDrawColor(200, 200, 200);
-  doc.line(marginX, Math.max(currentY, headerRightY + 5), pageWidth - marginX, Math.max(currentY, headerRightY + 5));
+  const underlineY = Math.max(currentY, headerRightY + 5);
+  doc.line(marginX, underlineY, pageWidth - marginX, underlineY);
   doc.setDrawColor(0, 0, 0);
-  currentY = Math.max(currentY, headerRightY + 5) + 8;
+  currentY = underlineY + 6;
+
+  // --- Centered Invoice Title ---
+  doc.setFontSize(12);
+  doc.setFont("helvetica", "bold");
+  doc.text(data.invoiceTitle || "INVOICE", pageWidth / 2, currentY, { align: "center" });
+  currentY += 6;
+
+  doc.setLineWidth(0.1);
+  doc.setDrawColor(200, 200, 200);
+  doc.line(marginX, currentY, pageWidth - marginX, currentY);
+  doc.setDrawColor(0, 0, 0);
+  currentY += 6;
+
 
   // --- Customer, Billing, Shipping Details (Three Columns) ---
   const customerX = marginX; // 15mm
@@ -193,6 +210,7 @@ export const generateInvoicePdf = (data: InvoiceData) => {
   doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
   data.lineItems.forEach((item, index) => {
+    if (!item.description?.trim()) return; // Skip empty descriptions
     const descriptionLines = doc.splitTextToSize(item.description, colWidths[1] - 2 * cellPadding);
     const requiredRowHeight = Math.max(baseRowHeight, descriptionLines.length * textLineHeight + 2 * cellPadding);
 
@@ -266,40 +284,53 @@ export const generateInvoicePdf = (data: InvoiceData) => {
     currentY = marginY;
   }
 
-  // Bank Details (Left)
-  doc.setFontSize(9);
-  doc.setFont("helvetica", "bold");
-  doc.text("Bank Name: FIRST BANK OF MISSOURI", bankDetailsX, currentY);
-  currentY += totalsSpacing;
-  doc.text("Account Name: JOSLA TECH LLC", bankDetailsX, currentY);
-  currentY += totalsSpacing;
-  doc.text("Account Number: 9876543210", bankDetailsX, currentY);
-  currentY += totalsSpacing;
-  doc.text("Routing Number: 081000123", bankDetailsX, currentY);
 
-  // Totals (Right, aligned with Total column)
-  let totalsY = currentY - (3 * totalsSpacing);
-  doc.setFontSize(9);
+  // --- Totals (Right-aligned) ---
+const totalsStartX = pageWidth - marginX - 70;
+const labelX = totalsStartX;
+const valueX = pageWidth - marginX;
+const totalsLineHeight = 6;
+currentY += 6;
+
+doc.setFontSize(9);
+
+// Subtotal
+doc.setFont("helvetica", "normal");
+doc.text("Subtotal:", labelX, currentY);
+doc.setFont("helvetica", "bold");
+doc.text(`$${data.subtotal.toFixed(2)}`, valueX, currentY, { align: "right" });
+currentY += totalsLineHeight;
+
+// Discount (if enabled)
+if (data.discountEnabled && data.discountAmount > 0) {
+  const discountLabel =
+    data.discountType === "percent"
+      ? `Discount (${data.discountValue}%):`
+      : `Discount (Flat $${data.discountValue}):`;
+
   doc.setFont("helvetica", "normal");
-  doc.text("Taxable", totalsBlockX - 20, totalsY);
+  doc.text(discountLabel, labelX, currentY);
   doc.setFont("helvetica", "bold");
-  doc.text(`USD ${data.subtotal.toFixed(2)}`, totalsValueX, totalsY, { align: "right" });
-  totalsY += totalsSpacing;
+  doc.text(`-$${data.discountAmount.toFixed(2)}`, valueX, currentY, { align: "right" });
+  currentY += totalsLineHeight;
+}
+
+// Tax (if applied)
+if (data.tax > 0) {
+  const taxRate = ((data.tax / (data.subtotal - data.discountAmount)) * 100).toFixed(2);
   doc.setFont("helvetica", "normal");
-  doc.text("Discount", totalsBlockX - 20, totalsY);
+  doc.text(`Tax (${taxRate}%):`, labelX, currentY);
   doc.setFont("helvetica", "bold");
-  doc.text(`USD ${data.discountAmount.toFixed(2)}`, totalsValueX, totalsY, { align: "right" });
-  totalsY += totalsSpacing;
-  doc.setFont("helvetica", "normal");
-  doc.text("Other Charges", totalsBlockX - 20, totalsY);
-  doc.setFont("helvetica", "bold");
-  doc.text("USD 0.00", totalsValueX, totalsY, { align: "right" });
-  totalsY += totalsSpacing;
-  doc.setFont("helvetica", "normal");
-  doc.text("Total", totalsBlockX - 20, totalsY);
-  doc.setFont("helvetica", "bold");
-  doc.text(`USD ${data.total.toFixed(2)}`, totalsValueX, totalsY, { align: "right" });
-  doc.setFont("helvetica", "normal");
+  doc.text(`$${data.tax.toFixed(2)}`, valueX, currentY, { align: "right" });
+  currentY += totalsLineHeight;
+}
+
+// Total
+doc.setFont("helvetica", "normal");
+doc.text("Total:", labelX, currentY);
+doc.setFont("helvetica", "bold");
+doc.text(`$${data.total.toFixed(2)}`, valueX, currentY, { align: "right" });
+currentY += totalsLineHeight;
 
   // Total in Words with Horizontal Lines
   currentY += 8;
@@ -317,6 +348,64 @@ export const generateInvoicePdf = (data: InvoiceData) => {
   doc.line(marginX, currentY, pageWidth - marginX, currentY);
   doc.setDrawColor(0, 0, 0);
   doc.setFont("helvetica", "normal");
+
+  // --- ADDITIONAL INFORMATION BLOCK (DYNAMIC AS TABLE) ---
+  if (data.additionalInformation?.trim()) {
+    const infoItems = data.additionalInformation
+      .split(/\n|\r/) // split by new lines
+      .map(line => line.trim())
+      .filter(line => line.length > 0); // remove blank lines
+
+    if (infoItems.length > 0) {
+      currentY += 10;
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "bold");
+      doc.text("Additional Description Table:", marginX, currentY);
+      currentY += 6;
+
+      const col1Width = 10; // S.No
+      const col2Width = pageWidth - 2 * marginX - col1Width;
+
+      // Draw table header
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "bold");
+      doc.setFillColor(240, 240, 240);
+      doc.rect(marginX, currentY, col1Width, 6, "F");
+      doc.rect(marginX + col1Width, currentY, col2Width, 6, "F");
+      doc.text("#", marginX + col1Width / 2, currentY + 4, { align: "center" });
+      doc.text("Description", marginX + col1Width + 2, currentY + 4);
+      currentY += 6;
+
+      // Draw table rows
+      doc.setFont("helvetica", "normal");
+      infoItems.forEach((item, index) => {
+        const lineHeight = 6;
+        const descLines = doc.splitTextToSize(item, col2Width - 4);
+        const rowHeight = descLines.length * 4 + 2;
+
+        // Page break if needed
+        if (currentY + rowHeight > pageHeight - marginY - 20) {
+          doc.addPage();
+          currentY = marginY;
+        }
+
+        doc.setFillColor(index % 2 === 0 ? 255 : 245);
+        doc.rect(marginX, currentY, col1Width, rowHeight, "F");
+        doc.rect(marginX + col1Width, currentY, col2Width, rowHeight, "F");
+
+        doc.text((index + 1).toString(), marginX + col1Width / 2, currentY + 5, { align: "center" });
+
+        let lineY = currentY + 5;
+        descLines.forEach((line) => {
+          doc.text(line, marginX + col1Width + 2, lineY);
+          lineY += 4;
+        });
+
+        currentY += rowHeight;
+      });
+    }
+  }
+
 
   // Add footer to the first page
   addFooter(data.footerMessage || "Terms & Conditions on following page.");
