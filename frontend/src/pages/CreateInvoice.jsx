@@ -1,18 +1,16 @@
-import { useState, useEffect } from "react";
+// src/pages/CreateInvoice.jsx
+import { useState, useEffect, useMemo } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { generateInvoicePdf } from "../utils/generateInvoicePdf";
 import AdditionalInfoBox from "./AdditionalInfoBox";
-
-
-
-const getClients = () => {
-  const stored = JSON.parse(localStorage.getItem("clients"));
-  return stored || [];
-};
+import { listClients } from "../api/clients";
 
 export default function CreateInvoice() {
   const [clients, setClients] = useState([]);
-  const [selectedClient, setSelectedClient] = useState("");
+  const [clientsLoading, setClientsLoading] = useState(false);
+  const [clientsError, setClientsError] = useState("");
+
+  const [selectedClientId, setSelectedClientId] = useState("");
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split("T")[0]);
   const [invoiceTitle, setInvoiceTitle] = useState("");
   const [lineItems, setLineItems] = useState([{ description: "", quantity: 1, price: 0 }]);
@@ -27,10 +25,38 @@ export default function CreateInvoice() {
 
   const [showPreview, setShowPreview] = useState(false);
 
-
+  // Fetch ALL clients (handles pagination)
   useEffect(() => {
-    setClients(getClients());
+    let ignore = false;
+    async function fetchAllClients() {
+      setClientsLoading(true);
+      setClientsError("");
+      try {
+        const pageSize = 100;
+        let page = 1;
+        let all = [];
+        while (true) {
+          const res = await listClients({ page, page_size: pageSize });
+          all = all.concat(res.data || []);
+          const total = res?.meta?.total ?? all.length;
+          if (all.length >= total) break;
+          page += 1;
+        }
+        if (!ignore) setClients(all);
+      } catch (e) {
+        if (!ignore) setClientsError("Failed to load clients.");
+      } finally {
+        if (!ignore) setClientsLoading(false);
+      }
+    }
+    fetchAllClients();
+    return () => { ignore = true; };
   }, []);
+
+  const currentClient = useMemo(
+    () => clients.find((c) => String(c.id) === String(selectedClientId)),
+    [clients, selectedClientId]
+  );
 
   const subtotal = lineItems.reduce((sum, item) => sum + item.quantity * item.price, 0);
 
@@ -42,13 +68,13 @@ export default function CreateInvoice() {
       : 0;
 
   const discountedSubtotal = Math.max(0, subtotal - discountAmount);
-
   const taxAmount = taxEnabled ? (discountedSubtotal * taxRate) / 100 : 0;
   const total = discountedSubtotal + taxAmount;
 
   const handleGeneratePdf = () => {
     const invoiceData = {
-      selectedClient,
+      client: currentClient || null,
+      selectedClientId,
       invoiceDate,
       invoiceTitle,
       lineItems,
@@ -63,14 +89,17 @@ export default function CreateInvoice() {
       taxAmount,
       total,
       additionalInformation,
-      status
+      status,
     };
     generateInvoicePdf(invoiceData);
   };
 
   const handleLineItemChange = (index, field, value) => {
     const updated = [...lineItems];
-    updated[index][field] = field === "quantity" || field === "price" ? Math.max(0, parseFloat(value) || 0) : value;
+    updated[index][field] =
+      field === "quantity" || field === "price"
+        ? Math.max(0, parseFloat(value) || 0)
+        : value;
     setLineItems(updated);
   };
 
@@ -88,53 +117,49 @@ export default function CreateInvoice() {
 
       <div className="space-y-6 p-5 bg-white shadow rounded-lg">
         <div className="space-y-6">
+          <div className="w-full flex flex-col md:flex-row gap-4">
+            <div className="flex-1">
+              <label className="block text-sm text-gray-600 mb-1">Select Client / Company</label>
+              <select
+                value={selectedClientId}
+                onChange={(e) => setSelectedClientId(e.target.value)}
+                className="w-full border p-2 rounded"
+                disabled={clientsLoading}
+              >
+                <option value="">
+                  {clientsLoading ? "Loading clients..." : "Select..."}
+                </option>
+                {clientsError && <option value="" disabled>{clientsError}</option>}
+                {clients.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name || "Unnamed"}{c.company ? ` (${c.company})` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          
-          
-<div className="w-full flex flex-col md:flex-row gap-4">
-  <div className="flex-1">
-    <label className="block text-sm text-gray-600 mb-1">Select Client / Company</label>
-    <select
-      value={selectedClient}
-      onChange={(e) => setSelectedClient(e.target.value)}
-      className="w-full border p-2 rounded"
-    >
-      <option value="">Select...</option>
-      {clients.map((c) => (
-        <option key={c.id} value={c.name}>
-          {c.name} ({c.company})
-        </option>
-      ))}
-    </select>
-  </div>
+            <div className="flex-1">
+              <label className="block text-sm text-gray-600 mb-1">Invoice Type</label>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                className="w-full border p-2 rounded"
+              >
+                <option value="Draft">Draft</option>
+                <option value="Invoice">Invoice</option>
+              </select>
+            </div>
 
-  <div className="flex-1">
-    <label className="block text-sm text-gray-600 mb-1">Invoice Type</label>
-    <select
-      value={status}
-      onChange={(e) => setStatus(e.target.value)}
-      className="w-full border p-2 rounded"
-    >
-      <option value="Draft">Draft</option>
-      <option value="Invoice">Invoice</option>
-    </select>
-  </div>
-
-  <div className="flex-1">
-    <label className="block text-sm text-gray-600 mb-1">Invoice Date</label>
-    <input
-      type="date"
-      value={invoiceDate}
-      onChange={(e) => setInvoiceDate(e.target.value)}
-      className="w-full border p-2 rounded"
-    />
-  </div>
-</div>
-
-
-          
-          
-
+            <div className="flex-1">
+              <label className="block text-sm text-gray-600 mb-1">Invoice Date</label>
+              <input
+                type="date"
+                value={invoiceDate}
+                onChange={(e) => setInvoiceDate(e.target.value)}
+                className="w-full border p-2 rounded"
+              />
+            </div>
+          </div>
 
           <div className="md:col-span-2">
             <label className="block text-sm text-gray-600 mb-1">Invoice Title</label>
@@ -170,7 +195,9 @@ export default function CreateInvoice() {
                         <input
                           type="text"
                           value={item.description}
-                          onChange={(e) => handleLineItemChange(index, "description", e.target.value)}
+                          onChange={(e) =>
+                            handleLineItemChange(index, "description", e.target.value)
+                          }
                           className="w-full border p-1 rounded"
                           placeholder="Item description"
                         />
@@ -179,7 +206,9 @@ export default function CreateInvoice() {
                         <input
                           type="number"
                           value={item.quantity}
-                          onChange={(e) => handleLineItemChange(index, "quantity", e.target.value)}
+                          onChange={(e) =>
+                            handleLineItemChange(index, "quantity", e.target.value)
+                          }
                           className="w-20 border p-1 rounded text-center"
                           min="0"
                         />
@@ -188,15 +217,22 @@ export default function CreateInvoice() {
                         <input
                           type="number"
                           value={item.price}
-                          onChange={(e) => handleLineItemChange(index, "price", e.target.value)}
+                          onChange={(e) =>
+                            handleLineItemChange(index, "price", e.target.value)
+                          }
                           className="w-28 border p-1 rounded text-center"
                           min="0"
                           step="0.01"
                         />
                       </td>
-                      <td className="p-2 border font-semibold">${rowTotal.toFixed(2)}</td>
+                      <td className="p-2 border font-semibold">
+                        ${rowTotal.toFixed(2)}
+                      </td>
                       <td className="p-2 border">
-                        <button onClick={() => removeLineItem(index)} className="text-red-500 hover:text-red-700">
+                        <button
+                          onClick={() => removeLineItem(index)}
+                          className="text-red-500 hover:text-red-700"
+                        >
                           <Trash2 size={18} />
                         </button>
                       </td>
@@ -237,7 +273,9 @@ export default function CreateInvoice() {
                 <input
                   type="number"
                   value={discountValue.toString().replace(/^0+/, "") || "0"}
-                  onChange={(e) => setDiscountValue(Math.max(0, parseFloat(e.target.value) || 0))}
+                  onChange={(e) =>
+                    setDiscountValue(Math.max(0, parseFloat(e.target.value) || 0))
+                  }
                   className="border p-2 rounded w-24"
                   min="0"
                   step={discountType === "percent" ? "1" : "0.01"}
@@ -259,7 +297,9 @@ export default function CreateInvoice() {
               <input
                 type="number"
                 value={taxRate}
-                onChange={(e) => setTaxRate(Math.max(0, parseFloat(e.target.value) || 0))}
+                onChange={(e) =>
+                  setTaxRate(Math.max(0, parseFloat(e.target.value) || 0))
+                }
                 className="border p-2 rounded w-24"
                 step="0.01"
               />
@@ -274,7 +314,11 @@ export default function CreateInvoice() {
             {discountEnabled && discountAmount > 0 && (
               <div className="flex justify-between text-red-500">
                 <span>
-                  Discount ({discountType === "percent" ? `${discountValue}%` : `Flat $${discountValue}`}):
+                  Discount (
+                  {discountType === "percent"
+                    ? `${discountValue}%`
+                    : `Flat $${discountValue}`}
+                  ):
                 </span>
                 <span>-${discountAmount.toFixed(2)}</span>
               </div>
@@ -293,9 +337,9 @@ export default function CreateInvoice() {
         </div>
 
         <AdditionalInfoBox
-            additionalInformation={additionalInformation}
-            setAdditionalInformation={setAdditionalInformation}
-      />
+          additionalInformation={additionalInformation}
+          setAdditionalInformation={setAdditionalInformation}
+        />
 
         <div className="mt-6">
           <label className="block text-sm text-gray-600 mb-1">Footer Message</label>
@@ -307,7 +351,6 @@ export default function CreateInvoice() {
           ></textarea>
         </div>
       </div>
-      
 
       <div className="flex gap-4">
         <button
@@ -326,9 +369,13 @@ export default function CreateInvoice() {
 
       {showPreview && (
         <div className="p-6 mt-6 bg-white shadow rounded-lg border">
-          <h2 className="text-xl font-bold text-center mb-4">{invoiceTitle || "Invoice Preview"}</h2>
+          <h2 className="text-xl font-bold text-center mb-4">
+            {invoiceTitle || "Invoice Preview"}
+          </h2>
           <p className="text-sm text-gray-500 text-center mb-6">
-            {selectedClient || "Client Name"} — {invoiceDate}
+            {(currentClient?.name || "Client Name") +
+              (currentClient?.company ? ` (${currentClient.company})` : "")}{" "}
+            — {invoiceDate}
           </p>
 
           <table className="w-full text-sm border mb-6">
@@ -346,7 +393,9 @@ export default function CreateInvoice() {
                   <td className="p-2 border">{item.description || "-"}</td>
                   <td className="p-2 border">{item.quantity}</td>
                   <td className="p-2 border">{item.price.toFixed(2)}</td>
-                  <td className="p-2 border">{(item.quantity * item.price).toFixed(2)}</td>
+                  <td className="p-2 border">
+                    {(item.quantity * item.price).toFixed(2)}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -356,10 +405,16 @@ export default function CreateInvoice() {
             <div>Subtotal: ${subtotal.toFixed(2)}</div>
             {discountEnabled && discountAmount > 0 && (
               <div className="text-red-500">
-                Discount ({discountType === "percent" ? `${discountValue}%` : `Flat $${discountValue}`}): -${discountAmount.toFixed(2)}
+                Discount (
+                {discountType === "percent"
+                  ? `${discountValue}%`
+                  : `Flat $${discountValue}`}
+                ): -${discountAmount.toFixed(2)}
               </div>
             )}
-            {taxEnabled && taxAmount > 0 && <div>Tax ({taxRate}%): ${taxAmount.toFixed(2)}</div>}
+            {taxEnabled && taxAmount > 0 && (
+              <div>Tax ({taxRate}%): ${taxAmount.toFixed(2)}</div>
+            )}
             <div className="font-bold text-lg">Total: ${total.toFixed(2)}</div>
           </div>
 

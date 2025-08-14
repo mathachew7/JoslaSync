@@ -1,15 +1,63 @@
-import { useState, useRef } from "react";
+// src/layouts/DashboardLayout.jsx
+import { useState, useRef, useEffect, useMemo } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Home, Users, FileText, BarChart, Menu, User, Plus, Settings } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
+import { getCompanyProfile } from "../api/company";
 
 export default function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [companyName, setCompanyName] = useState("Company");
   const dropdownTimer = useRef(null);
   const location = useLocation();
   const navigate = useNavigate();
+  const { user, ready, token, logout } = useAuth();
 
-  const companyName = "Dream Builders"; // Dynamic later
+  // Load company name only after auth is ready and token exists
+  useEffect(() => {
+    if (!ready || !token) return;
+
+    // Master account uses the master DB — skip tenant-only endpoint
+    if (user?.role === "master") {
+      setCompanyName("Joslasync");
+      return;
+    }
+
+    let alive = true;
+    (async () => {
+      try {
+        const data = await getCompanyProfile();
+        if (alive && data?.company_name) setCompanyName(data.company_name);
+      } catch {
+        // Let axios interceptor handle 401 refresh or logout automatically.
+        // If 404: profile not set yet — keep default label.
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [ready, token, user?.role]);
+
+  // Build dynamic page title from the current path
+  const pageTitle = useMemo(() => {
+    const path = location.pathname.replace(/^\/+|\/+$/g, "");
+    if (!path) return "Dashboard";
+    const segs = path.split("/").map((s) => {
+      if (!s) return "";
+      if (s === "create") return "Create";
+      if (s === "add") return "Add";
+      if (s === "edit") return "Edit";
+      if (/^\d+$/.test(s)) return "Details";
+      if (/^[0-9a-f-]{8,}$/i.test(s)) return "Details";
+      return s
+        .split("-")
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" ");
+    });
+    return segs.join(" / ");
+  }, [location.pathname]);
 
   const navLinks = [
     { path: "/dashboard", label: "Dashboard", icon: <Home size={18} /> },
@@ -22,16 +70,27 @@ export default function DashboardLayout() {
     if (dropdownTimer.current) clearTimeout(dropdownTimer.current);
     setDropdownOpen(true);
   };
-
   const closeDropdown = () => {
-    dropdownTimer.current = setTimeout(() => {
-      setDropdownOpen(false);
-    }, 200);
+    dropdownTimer.current = setTimeout(() => setDropdownOpen(false), 200);
   };
 
-  // Check active pages to show the correct action button
-  const isClientsPage = location.pathname === "/clients";
-  const isInvoicesPage = location.pathname === "/invoices";
+  // Show action buttons only on list pages (not on create/edit)
+  const isClientsList = location.pathname === "/clients";
+  const isInvoicesList = location.pathname === "/invoices";
+
+  const handleLogout = () => {
+    logout();
+    navigate("/login");
+  };
+
+  // Small loader while auth is bootstrapping
+  if (!ready) {
+    return (
+      <div className="grid place-items-center h-screen text-gray-500">
+        <div className="animate-pulse">Loading workspace…</div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen font-sans bg-gray-50">
@@ -51,7 +110,7 @@ export default function DashboardLayout() {
               key={path}
               to={path}
               className={`flex items-center space-x-3 px-3 py-2 rounded-lg transition ${
-                location.pathname === path
+                location.pathname.startsWith(path)
                   ? "bg-gray-700 text-white shadow"
                   : "hover:bg-gray-700 hover:text-white"
               }`}
@@ -62,7 +121,7 @@ export default function DashboardLayout() {
         </nav>
 
         <div className="p-5 border-t border-gray-700 text-xs text-gray-400">
-          Logged in as <b>Master</b>
+          Logged in as <b>{user?.username || "User"}</b>
         </div>
       </aside>
 
@@ -70,7 +129,7 @@ export default function DashboardLayout() {
         <div
           className="fixed inset-0 bg-black bg-opacity-40 z-40 md:hidden"
           onClick={() => setSidebarOpen(false)}
-        ></div>
+        />
       )}
 
       {/* Main Section */}
@@ -91,11 +150,7 @@ export default function DashboardLayout() {
           </h1>
 
           {/* Profile Dropdown */}
-          <div
-            className="relative"
-            onMouseEnter={openDropdown}
-            onMouseLeave={closeDropdown}
-          >
+          <div className="relative" onMouseEnter={openDropdown} onMouseLeave={closeDropdown}>
             <button className="p-2 rounded-full bg-gray-100 hover:bg-gray-200 transition">
               <User size={22} className="text-gray-700" />
             </button>
@@ -106,7 +161,6 @@ export default function DashboardLayout() {
                 onMouseEnter={openDropdown}
                 onMouseLeave={closeDropdown}
               >
-                {/* Profile */}
                 <button
                   onClick={() => navigate("/profile")}
                   className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-600 hover:bg-gray-100"
@@ -116,10 +170,13 @@ export default function DashboardLayout() {
                 </button>
 
                 <div className="px-4 py-2 text-gray-600 text-sm border-t">
-                  Logged in as <b>Master</b>
+                  Logged in as <b>{user?.username || "User"}</b>
                 </div>
 
-                <button className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-gray-100">
+                <button
+                  onClick={handleLogout}
+                  className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-gray-100"
+                >
                   Logout
                 </button>
               </div>
@@ -129,12 +186,9 @@ export default function DashboardLayout() {
 
         {/* Page Header (Title + Contextual Action Buttons) */}
         <div className="w-full p-4 border-y bg-white shadow-sm flex justify-between items-center">
-          <span className="text-lg font-semibold text-gray-800">
-            {navLinks.find((link) => link.path === location.pathname)?.label || "Page"}
-          </span>
+          <span className="text-lg font-semibold text-gray-800">{pageTitle}</span>
 
-          {/* Action Buttons for Clients or Invoices */}
-          {isClientsPage && (
+          {isClientsList && (
             <button
               onClick={() => navigate("/clients/add")}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition shadow"
@@ -143,7 +197,7 @@ export default function DashboardLayout() {
             </button>
           )}
 
-          {isInvoicesPage && (
+          {isInvoicesList && (
             <button
               onClick={() => navigate("/invoices/create")}
               className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition shadow"
