@@ -1,7 +1,9 @@
 # Multi-Tenant Invoicing System
 ---
 ## Project Overview
+
 This project **JoslaSync** is a comprehensive multi-tenant invoicing system designed to empower small to medium-sized businesses with efficient client management, invoice creation, payment tracking, and reporting capabilities. Each company operates within its own secure, isolated environment, ensuring data privacy and integrity. The system aims to provide an intuitive, modern, and impactful tool for financial management.
+
 ---
 
 ## Features
