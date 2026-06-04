@@ -1,75 +1,70 @@
-// src/pages/AddClient.jsx
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createClient } from "../../api/clients";
+import { US_STATES, STATE_TAX_RATES } from "../../constants/usStates";
 import DialogBox from "../../components/DialogBox";
 
-const STATUS_OPTIONS = ["Active", "Deactivated", "Blacklisted"];
-
-// ✅ Local YYYY-MM-DD (avoids UTC off-by-one)
 const todayStr = (() => {
   const d = new Date();
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 })();
+
+const SECTION = "bg-white shadow rounded-xl p-5 space-y-4";
+const LABEL   = "block text-xs font-medium text-gray-500 mb-1";
 
 export default function AddClient() {
   const navigate = useNavigate();
 
-  // ✅ match backend schema keys
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    company: "",
-    notes: "",
-    joined_date: todayStr, // ✅ auto-selected to today
-
-    address_line1: "",
-    address_line2: "",
-    city: "",
-    state: "",
-    postal_code: "",
-    country: "",
-
-    default_currency: "",
+  const [form, setForm] = useState({
+    name:             "",
+    email:            "",
+    phone:            "",
+    company:          "",
+    notes:            "",
+    joined_date:      todayStr,
+    address_line1:    "",
+    address_line2:    "",
+    city:             "",
+    state:            "",
+    postal_code:      "",
+    country:          "US",
+    default_currency: "USD",
     default_tax_rate: "",
-    payment_terms: "",
-    discount_rate: "",
-    status: "Active",
+    payment_terms:    "",
+    discount_rate:    "",
   });
 
-  const [errors, setErrors] = useState({});
+  const [errors,  setErrors]  = useState({});
   const [loading, setLoading] = useState(false);
+  const [dialog,  setDialog]  = useState({ show: false, type: "success", msg: "" });
 
-  const [showDialog, setShowDialog] = useState(false);
-  const [dialogType, setDialogType] = useState("success");
-  const [dialogMessage, setDialogMessage] = useState("");
-
-  const handleChange = (e) => {
+  const set = (e) => {
     const { name, value } = e.target;
-    const v = name === "phone" ? value.replace(/[^\d()+\-\s]/g, "") : value;
-    setFormData((s) => ({ ...s, [name]: v }));
-    setErrors((prev) => ({ ...prev, [name]: "" }));
+    setForm((f) => {
+      const next = { ...f, [name]: value };
+      // Auto-fill state tax rate when US state changes
+      if (name === "state" && STATE_TAX_RATES[value] !== undefined) {
+        next.default_tax_rate = String(STATE_TAX_RATES[value]);
+      }
+      return next;
+    });
+    setErrors((p) => ({ ...p, [name]: "" }));
   };
 
   const validate = () => {
     const e = {};
-    if (!formData.name.trim()) e.name = "Name is required.";
-    if (!formData.email.trim()) e.email = "Email is required.";
-    if (!formData.phone.trim()) e.phone = "Phone is required.";
-    if (!formData.company.trim()) e.company = "Company is required.";
-
-    if (!formData.address_line1.trim()) e.address_line1 = "Address Line 1 is required.";
-    if (!formData.city.trim()) e.city = "City is required.";
-    if (!formData.state.trim()) e.state = "State is required.";
-    if (!formData.postal_code.trim()) e.postal_code = "Postal code is required.";
-
-    if (formData.default_tax_rate !== "" && isNaN(Number(formData.default_tax_rate)))
+    if (!form.name.trim())          e.name          = "Required.";
+    if (!form.email.trim())         e.email         = "Required.";
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = "Invalid email.";
+    if (!form.phone.trim())         e.phone         = "Required.";
+    if (!form.address_line1.trim()) e.address_line1 = "Required.";
+    if (!form.city.trim())          e.city          = "Required.";
+    if (!form.state)                e.state         = "Required.";
+    if (!form.postal_code.trim())   e.postal_code   = "Required.";
+    if (form.default_tax_rate !== "" && isNaN(Number(form.default_tax_rate)))
       e.default_tax_rate = "Must be a number.";
-    if (formData.discount_rate !== "" && isNaN(Number(formData.discount_rate)))
+    if (form.discount_rate !== "" && isNaN(Number(form.discount_rate)))
       e.discount_rate = "Must be a number.";
-
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -79,302 +74,164 @@ export default function AddClient() {
     if (!validate()) return;
     setLoading(true);
     try {
-      // send exactly backend keys
       await createClient({
-        ...formData,
-        state: formData.state.toString(), // keep as-is; backend allows up to 100 chars
-        joined_date: formData.joined_date || todayStr, // ✅ ensure a value goes through
-        country: formData.country || null,
-        default_currency: formData.default_currency || null,
-        default_tax_rate:
-          formData.default_tax_rate === "" ? null : Number(formData.default_tax_rate),
-        discount_rate:
-          formData.discount_rate === "" ? null : Number(formData.discount_rate),
-        payment_terms: formData.payment_terms || null,
+        ...form,
+        company:          form.company   || null,
+        address_line2:    form.address_line2 || null,
+        country:          form.country   || null,
+        default_currency: form.default_currency || null,
+        default_tax_rate: form.default_tax_rate === "" ? null : Number(form.default_tax_rate),
+        discount_rate:    form.discount_rate    === "" ? null : Number(form.discount_rate),
+        payment_terms:    form.payment_terms    || null,
+        notes:            form.notes            || null,
       });
-      setDialogType("success");
-      setDialogMessage("Client created successfully.");
-      setShowDialog(true);
+      setDialog({ show: true, type: "success", msg: "Client created successfully." });
       setTimeout(() => navigate("/clients"), 700);
     } catch (err) {
-      setDialogType("error");
-      setDialogMessage("Failed to create client. Please check the fields.");
-      setShowDialog(true);
+      const detail = err?.response?.data?.detail;
+      const msg = Array.isArray(detail)
+        ? detail.map((d) => d.msg).join(", ")
+        : (typeof detail === "string" ? detail : "Failed to create client.");
+      setDialog({ show: true, type: "error", msg });
     } finally {
       setLoading(false);
     }
   };
 
-  const err = (k) =>
-    `w-full border px-3 py-2 rounded text-sm ${
-      errors[k] ? "border-red-500" : "border-gray-300"
+  const inp = (name) =>
+    `w-full border rounded px-3 py-2 text-sm focus:outline-none ${
+      errors[name] ? "border-red-400 focus:border-red-400" : "border-gray-300 focus:border-blue-400"
     }`;
 
+  const Err = ({ name }) =>
+    errors[name] ? <p className="text-xs text-red-500 mt-0.5">{errors[name]}</p> : null;
+
   return (
-    <div className="bg-white shadow rounded-lg p-6 max-w-3xl mx-auto">
-      {showDialog && (
-        <DialogBox
-          message={dialogMessage}
-          type={dialogType}
-          onClose={() => setShowDialog(false)}
-        />
+    <form onSubmit={handleSubmit} className="max-w-3xl mx-auto space-y-5">
+      {dialog.show && (
+        <DialogBox message={dialog.msg} type={dialog.type} onClose={() => setDialog((d) => ({ ...d, show: false }))} />
       )}
 
-      <h2 className="text-2xl font-bold mb-6">Add New Client</h2>
-
-      <form onSubmit={handleSubmit} className="space-y-5">
-        {/* Name + Company */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* ── Identity ── */}
+      <div className={SECTION}>
+        <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Contact</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-600 mb-1">Name *</label>
-            <input
-              type="text"
-              name="name"
-              value={formData.name}
-              onChange={handleChange}
-              className={err("name")}
-            />
-            {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
+            <label className={LABEL}>Full Name <span className="text-red-500">*</span></label>
+            <input type="text" name="name" value={form.name} onChange={set} className={inp("name")} placeholder="Jane Doe" />
+            <Err name="name" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-600 mb-1">Company *</label>
+            <label className={LABEL}>Company <span className="text-gray-400">(optional)</span></label>
+            <input type="text" name="company" value={form.company} onChange={set} className={inp("company")} placeholder="Acme Inc" />
+          </div>
+          <div>
+            <label className={LABEL}>Email <span className="text-red-500">*</span></label>
+            <input type="email" name="email" value={form.email} onChange={set} className={inp("email")} placeholder="jane@acme.com" />
+            <Err name="email" />
+          </div>
+          <div>
+            <label className={LABEL}>Phone <span className="text-red-500">*</span></label>
             <input
-              type="text"
-              name="company"
-              value={formData.company}
-              onChange={handleChange}
-              className={err("company")}
+              type="text" name="phone" value={form.phone}
+              onChange={(e) => set({ target: { name: "phone", value: e.target.value.replace(/[^\d()+\-\s]/g, "") } })}
+              className={inp("phone")} placeholder="+1 555-123-4567"
             />
-            {errors.company && <p className="text-red-500 text-xs mt-1">{errors.company}</p>}
+            <Err name="phone" />
           </div>
         </div>
+      </div>
 
-        {/* Email + Phone + Status */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-600 mb-1">Email *</label>
-            <input
-              type="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              className={err("email")}
-            />
-            {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
+      {/* ── Address ── */}
+      <div className={SECTION}>
+        <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Address</h3>
+        <div>
+          <label className={LABEL}>Address Line 1 <span className="text-red-500">*</span></label>
+          <input type="text" name="address_line1" value={form.address_line1} onChange={set} className={inp("address_line1")} placeholder="123 Main Street" />
+          <Err name="address_line1" />
+        </div>
+        <div>
+          <label className={LABEL}>Address Line 2 <span className="text-gray-400">(optional)</span></label>
+          <input type="text" name="address_line2" value={form.address_line2} onChange={set} className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-400" placeholder="Suite 200" />
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="col-span-2">
+            <label className={LABEL}>City <span className="text-red-500">*</span></label>
+            <input type="text" name="city" value={form.city} onChange={set} className={inp("city")} />
+            <Err name="city" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-600 mb-1">Phone *</label>
-            <input
-              type="text"
-              name="phone"
-              value={formData.phone}
-              onChange={handleChange}
-              className={err("phone")}
-              placeholder="+1 555-123-4567"
-            />
-            {errors.phone && <p className="text-red-500 text-xs mt-1">{errors.phone}</p>}
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-600 mb-1">Status</label>
-            <select
-              name="status"
-              value={formData.status}
-              onChange={handleChange}
-              className="w-full border px-3 py-2 rounded text-sm bg-white border-gray-300"
-            >
-              {STATUS_OPTIONS.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
+            <label className={LABEL}>State <span className="text-red-500">*</span></label>
+            <select name="state" value={form.state} onChange={set} className={`w-full border rounded px-3 py-2 text-sm bg-white focus:outline-none focus:border-blue-400 ${errors.state ? "border-red-400" : "border-gray-300"}`}>
+              <option value="">— Select —</option>
+              {US_STATES.map((s) => (
+                <option key={s.code} value={s.code}>{s.code} — {s.name}</option>
               ))}
             </select>
           </div>
+          <div>
+            <label className={LABEL}>Postal Code <span className="text-red-500">*</span></label>
+            <input type="text" name="postal_code" value={form.postal_code} onChange={set} className={inp("postal_code")} placeholder="63119" />
+            <Err name="postal_code" />
+          </div>
         </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className={LABEL}>Country</label>
+            <input type="text" name="country" value={form.country} onChange={set} maxLength={2} className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-400 uppercase" placeholder="US" />
+          </div>
+        </div>
+      </div>
 
-        {/* Address */}
+      {/* ── Financial defaults ── */}
+      <div className={SECTION}>
+        <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Financial Defaults <span className="text-gray-400 font-normal normal-case text-xs">(optional — used on invoices)</span></h3>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div>
+            <label className={LABEL}>Default Tax %</label>
+            <input type="number" name="default_tax_rate" value={form.default_tax_rate} onChange={set} className={inp("default_tax_rate")} placeholder="8.5" min="0" max="100" step="0.01" />
+            <Err name="default_tax_rate" />
+          </div>
+          <div>
+            <label className={LABEL}>Currency</label>
+            <input type="text" name="default_currency" value={form.default_currency} onChange={set} maxLength={3} className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-400 uppercase" placeholder="USD" />
+          </div>
+          <div>
+            <label className={LABEL}>Payment Terms</label>
+            <input type="text" name="payment_terms" value={form.payment_terms} onChange={set} className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-400" placeholder="Net 30" />
+          </div>
+          <div>
+            <label className={LABEL}>Discount %</label>
+            <input type="number" name="discount_rate" value={form.discount_rate} onChange={set} className={inp("discount_rate")} placeholder="0" min="0" max="100" step="0.01" />
+            <Err name="discount_rate" />
+          </div>
+        </div>
+      </div>
+
+      {/* ── Other ── */}
+      <div className={SECTION}>
+        <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Other</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className={LABEL}>Joined Date</label>
+            <input type="date" name="joined_date" value={form.joined_date} onChange={set} max={todayStr} className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-400" />
+          </div>
+        </div>
         <div>
-          <label className="block text-sm font-medium text-gray-600 mb-1">Address Line 1 *</label>
-          <input
-            type="text"
-            name="address_line1"
-            value={formData.address_line1}
-            onChange={handleChange}
-            className={err("address_line1")}
-            placeholder="Street address"
-          />
-          {errors.address_line1 && (
-            <p className="text-red-500 text-xs mt-1">{errors.address_line1}</p>
-          )}
+          <label className={LABEL}>Notes</label>
+          <textarea name="notes" rows={3} value={form.notes} onChange={set} className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-400 resize-none" placeholder="VIP client, billing preferences…" />
         </div>
+      </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-600 mb-1">Address Line 2</label>
-          <input
-            type="text"
-            name="address_line2"
-            value={formData.address_line2}
-            onChange={handleChange}
-            className="w-full border px-3 py-2 rounded text-sm border-gray-300"
-            placeholder="Apt, suite, etc."
-          />
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-600 mb-1">City *</label>
-            <input
-              type="text"
-              name="city"
-              value={formData.city}
-              onChange={handleChange}
-              className={err("city")}
-            />
-            {errors.city && <p className="text-red-500 text-xs mt-1">{errors.city}</p>}
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-600 mb-1">State *</label>
-            <input
-              type="text"
-              name="state"
-              value={formData.state}
-              onChange={handleChange}
-              className={err("state")}
-              placeholder="MO"
-              maxLength={100}
-            />
-            {errors.state && <p className="text-red-500 text-xs mt-1">{errors.state}</p>}
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-600 mb-1">Postal Code *</label>
-            <input
-              type="text"
-              name="postal_code"
-              value={formData.postal_code}
-              onChange={handleChange}
-              className={err("postal_code")}
-              placeholder="63119"
-            />
-            {errors.postal_code && (
-              <p className="text-red-500 text-xs mt-1">{errors.postal_code}</p>
-            )}
-          </div>
-        </div>
-
-        {/* Optional extras */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-600 mb-1">Country (2‑char)</label>
-            <input
-              type="text"
-              name="country"
-              value={formData.country}
-              onChange={handleChange}
-              className="w-full border px-3 py-2 rounded text-sm border-gray-300"
-              placeholder="US"
-              maxLength={2}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-600 mb-1">Currency (3‑char)</label>
-            <input
-              type="text"
-              name="default_currency"
-              value={formData.default_currency}
-              onChange={handleChange}
-              className="w-full border px-3 py-2 rounded text-sm border-gray-300"
-              placeholder="USD"
-              maxLength={3}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-600 mb-1">Tax Rate %</label>
-            <input
-              type="text"
-              name="default_tax_rate"
-              value={formData.default_tax_rate}
-              onChange={handleChange}
-              className={err("default_tax_rate")}
-              placeholder="e.g., 8.5"
-            />
-            {errors.default_tax_rate && (
-              <p className="text-red-500 text-xs mt-1">{errors.default_tax_rate}</p>
-            )}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-600 mb-1">Payment Terms</label>
-            <input
-              type="text"
-              name="payment_terms"
-              value={formData.payment_terms}
-              onChange={handleChange}
-              className="w-full border px-3 py-2 rounded text-sm border-gray-300"
-              placeholder="Net 30"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-600 mb-1">Discount %</label>
-            <input
-              type="text"
-              name="discount_rate"
-              value={formData.discount_rate}
-              onChange={handleChange}
-              className={err("discount_rate")}
-              placeholder="0"
-            />
-            {errors.discount_rate && (
-              <p className="text-red-500 text-xs mt-1">{errors.discount_rate}</p>
-            )}
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-600 mb-1">Joined Date</label>
-            <input
-              type="date"
-              name="joined_date"
-              value={formData.joined_date}
-              onChange={handleChange}
-              className="w-full border px-3 py-2 rounded text-sm border-gray-300"
-              max={todayStr} // ✅ prevent selecting future dates by default
-            />
-          </div>
-        </div>
-
-        {/* Notes */}
-        <div>
-          <label className="block text-sm font-medium text-gray-600 mb-1">Notes</label>
-          <textarea
-            name="notes"
-            rows={3}
-            value={formData.notes}
-            onChange={handleChange}
-            className="w-full border px-3 py-2 rounded text-sm border-gray-300"
-            placeholder="VIP client, billing preferences, etc."
-          />
-        </div>
-
-        {/* Actions */}
-        <div className="flex justify-end gap-3 mt-4">
-          <button
-            type="button"
-            onClick={() => navigate("/clients")}
-            className="px-4 py-2 text-sm rounded border hover:bg-gray-100"
-            disabled={loading}
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={loading}
-            className={`px-4 py-2 text-sm rounded text-white shadow ${
-              loading ? "bg-blue-400" : "bg-blue-600 hover:bg-blue-700"
-            }`}
-          >
-            {loading ? "Saving..." : "Save Client"}
-          </button>
-        </div>
-      </form>
-    </div>
+      {/* ── Actions ── */}
+      <div className="flex justify-end gap-3 pb-6">
+        <button type="button" onClick={() => navigate("/clients")} className="px-4 py-2 text-sm border rounded hover:bg-gray-50" disabled={loading}>
+          Cancel
+        </button>
+        <button type="submit" disabled={loading} className={`px-6 py-2 text-sm rounded text-white shadow ${loading ? "bg-blue-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"}`}>
+          {loading ? "Saving…" : "Save Client"}
+        </button>
+      </div>
+    </form>
   );
 }

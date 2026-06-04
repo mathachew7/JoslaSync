@@ -1,7 +1,7 @@
 // src/pages/Clients.jsx
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Edit, Search, ChevronDown, ChevronUp } from "lucide-react";
+import { Eye, Search, ChevronDown, ChevronUp } from "lucide-react";
 import {
   LineChart,
   Line,
@@ -284,25 +284,32 @@ export default function Clients() {
               </tr>
             )}
             {rows.map((c) => (
-              <tr key={c.id} className="border-b last:border-none hover:bg-gray-50 transition">
-                <td className="py-2 px-3">{c.name}</td>
-                <td className="py-2 px-3">{c.email || "-"}</td>
-                <td className="py-2 px-3">{c.phone || "-"}</td>
-                <td className="py-2 px-3">{c.company || "-"}</td>
+              <tr
+                key={c.id}
+                onClick={() => navigate(`/clients/${c.id}`)}
+                className="border-b last:border-none hover:bg-gray-50 transition cursor-pointer"
+              >
+                <td className="py-2 px-3 font-medium text-gray-800">{c.name}</td>
+                <td className="py-2 px-3 text-gray-500">{c.email || "—"}</td>
+                <td className="py-2 px-3 text-gray-500">{c.phone || "—"}</td>
+                <td className="py-2 px-3 text-gray-500">{c.company || "—"}</td>
+                <td className="py-2 px-3 text-gray-500">
+                  {c.created_at ? new Date(c.created_at).toISOString().split("T")[0] : "—"}
+                </td>
                 <td className="py-2 px-3">
-                  {c.created_at ? new Date(c.created_at).toISOString().split("T")[0] : "-"}
+                  <span className={`px-2 py-0.5 text-xs rounded border ${
+                    c.status === "Active"      ? "bg-green-50 text-green-700 border-green-200" :
+                    c.status === "Blacklisted" ? "bg-red-50 text-red-700 border-red-200" :
+                                                 "bg-blue-50 text-blue-700 border-blue-200"
+                  }`}>
+                    {c.status || "—"}
+                  </span>
                 </td>
-                <td className="py-2 px-3">{c.status || "-"}</td>               
                 <td className="py-2 px-3 text-right">
-                  <button
-                    onClick={() => navigate(`/clients/edit/${c.id}`)}
-                    className="text-blue-500 hover:text-blue-700"
-                    title="Edit client"
-                  >
-                    <Edit size={18} />
-                  </button>
+                  <span className="inline-flex items-center gap-1 text-xs text-blue-600">
+                    <Eye size={14} /> View
+                  </span>
                 </td>
-
               </tr>
             ))}
           </tbody>

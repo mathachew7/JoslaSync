@@ -38,6 +38,11 @@ class CompanySettingsBase(BaseModel):
     show_logo_all_pages: bool = False
     show_watermark: bool = False
 
+    # Reminder settings
+    reminder_enabled: bool = False
+    reminder_frequency_days: int = 7
+    reminder_max_count: int = 3
+
     @validator("brand_primary_hex")
     def _hex(cls, v: str) -> str:
         if not isinstance(v, str) or not v.startswith("#") or len(v) not in (4, 7):

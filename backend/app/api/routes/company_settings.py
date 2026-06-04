@@ -73,6 +73,10 @@ async def put_settings(
     show_logo_page1: Optional[bool] = Form(default=None),
     show_logo_all_pages: Optional[bool] = Form(default=None),
     show_watermark: Optional[bool] = Form(default=None),
+
+    reminder_enabled: Optional[bool] = Form(default=None),
+    reminder_frequency_days: Optional[int] = Form(default=None),
+    reminder_max_count: Optional[int] = Form(default=None),
 ):
     log.info("🛠 Updating company settings (multipart)")
 
@@ -103,12 +107,15 @@ async def put_settings(
         "show_logo_page1": show_logo_page1,
         "show_logo_all_pages": show_logo_all_pages,
         "show_watermark": show_watermark,
+        "reminder_enabled": reminder_enabled,
+        "reminder_frequency_days": reminder_frequency_days,
+        "reminder_max_count": reminder_max_count,
     }.items():
         if v is not None:
             payload[k] = v
 
     # Coerce boolean-ish form values
-    for k in ("show_logo_page1", "show_logo_all_pages", "show_watermark"):
+    for k in ("show_logo_page1", "show_logo_all_pages", "show_watermark", "reminder_enabled"):
         if k in payload:
             payload[k] = _to_bool(payload[k])
 

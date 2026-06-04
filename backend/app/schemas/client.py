@@ -29,7 +29,7 @@ class ClientBase(BaseModel):
     discount_rate: Optional[float] = Field(None, ge=0, le=100)
 
 class ClientCreate(ClientBase):
-    pass
+    status: StatusType = "Active"  # always Active on creation; ignored if caller sends it
 
 class ClientUpdate(BaseModel):
     name: Optional[constr(strip_whitespace=True, max_length=200)] = None

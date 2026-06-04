@@ -1,41 +1,33 @@
-# app/repositories/company_profile_repo.py
 from typing import Optional, Mapping, Any
 from sqlalchemy.orm import Session
 
 from app.core.logger import logger
-from app.db.models.master.company_profile import CompanyProfile as MasterCompanyProfile
+from app.db.models.master.company_profile import Company
 from app.db.models.tenant.company_profile import CompanyProfile as TenantCompanyProfile
 
 
 class CompanyProfileRepository:
-    # -------- Master DB --------
+    # -------- Master DB (companies table) --------
+
     def master_exists_by_name(self, db: Session, company_name: str) -> bool:
-        exists = (
-            db.query(MasterCompanyProfile)
-            .filter_by(company_name=company_name)
-            .first()
-            is not None
-        )
-        logger.debug(f"🔎 Master exists check for '{company_name}': {exists}")
-        return exists
+        return db.query(Company).filter_by(company_name=company_name).first() is not None
 
-    def create_master_profile(self, db: Session, company_name: str, db_name: str) -> MasterCompanyProfile:
-        master_profile = MasterCompanyProfile(company_name=company_name, db_name=db_name)
-        db.add(master_profile)
+    def create_master_profile(self, db: Session, company_name: str, db_name: str) -> Company:
+        record = Company(company_name=company_name, db_name=db_name)
+        db.add(record)
         db.commit()
-        db.refresh(master_profile)
-        logger.debug(f"✅ Master profile created: id={master_profile.id}, db_name={db_name}")
-        return master_profile
+        db.refresh(record)
+        logger.debug(f"✅ Company created: id={record.id} db={db_name}")
+        return record
 
-    def get_by_id(self, db: Session, company_id: int) -> Optional[MasterCompanyProfile]:
-        logger.debug(f"🔎 Fetch master company by id: {company_id}")
-        return db.query(MasterCompanyProfile).filter(MasterCompanyProfile.id == company_id).first()
+    def get_by_id(self, db: Session, company_id: int) -> Optional[Company]:
+        return db.query(Company).filter(Company.id == company_id).first()
 
-    def get_by_name(self, db: Session, company_name: str) -> Optional[MasterCompanyProfile]:
-        logger.debug(f"🔎 Fetch master company by name: {company_name}")
-        return db.query(MasterCompanyProfile).filter(MasterCompanyProfile.company_name == company_name).first()
+    def get_by_name(self, db: Session, company_name: str) -> Optional[Company]:
+        return db.query(Company).filter(Company.company_name == company_name).first()
 
-    # -------- Tenant DB --------
+    # -------- Tenant DB (company_profile table) --------
+
     def get_tenant_profile(self, db: Session) -> Optional[TenantCompanyProfile]:
         return db.query(TenantCompanyProfile).first()
 
@@ -52,11 +44,6 @@ class CompanyProfileRepository:
         existing: TenantCompanyProfile,
         fields: Mapping[str, Any],
     ) -> TenantCompanyProfile:
-        """
-        Partial update:
-        - Ignore None values (don’t overwrite)
-        - Ignore unknown attributes
-        """
         for k, v in fields.items():
             if v is None:
                 continue

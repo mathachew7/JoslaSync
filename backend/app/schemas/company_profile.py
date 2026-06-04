@@ -9,6 +9,7 @@ class CompanyProfileBase(BaseModel):
     company_name: str
     company_email: EmailStr
     company_mobile: str
+    full_name: str
     address1: str
     address2: str
     city: str
@@ -25,6 +26,7 @@ class CompanyProfileUpdate(BaseModel):
     company_name: Optional[str] = None
     company_email: Optional[EmailStr] = None
     company_mobile: Optional[str] = None
+    full_name: Optional[str] = None
     address1: Optional[str] = None
     address2: Optional[str] = None
     city: Optional[str] = None

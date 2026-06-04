@@ -22,6 +22,7 @@ from app.utils.security import (
     is_master_username,
 )
 from app.core.config import settings
+from app.db.database import create_tenant_database_if_missing, ensure_tenant_tables
 
 
 class AuthService:
@@ -34,8 +35,27 @@ class AuthService:
     # -------------------------
     def register_user(self, user: UserCreate, db: Session) -> UserRead:
         ensure_unique_username(db, user.username, self.auth_repo)
+
+        company_name = user.company_name.strip()
+        if not company_name:
+            raise HTTPException(status_code=400, detail="company_name is required")
+        if self.company_repo.master_exists_by_name(db, company_name):
+            raise HTTPException(status_code=400, detail=f"Company '{company_name}' already exists")
+
+        # Derive a safe DB name: lowercase, spaces→underscores, strip non-alphanum
+        import re
+        safe = re.sub(r"[^a-z0-9_]", "", company_name.lower().replace(" ", "_"))
+        db_name = f"{safe}_db" if safe else "company_db"
+
+        master_company = self.company_repo.create_master_profile(db, company_name, db_name)
+        logger.info(f"✅ Master company created: id={master_company.id} db={db_name}")
+
+        create_tenant_database_if_missing(db_name)
+        ensure_tenant_tables(db_name)
+        logger.info(f"✅ Tenant DB ready: {db_name}")
+
         hashed = hash_password(user.password)
-        created = self.auth_repo.create_user(db, user, hashed)
+        created = self.auth_repo.create_user(db, user, hashed, company_id=master_company.id)
         logger.info(f"✅ User created in DB: {created.username}")
         return UserRead.model_validate(created)
 

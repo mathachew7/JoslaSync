@@ -74,7 +74,6 @@ export default function DashboardLayout() {
     dropdownTimer.current = setTimeout(() => setDropdownOpen(false), 200);
   };
 
-  // Show action buttons only on list pages (not on create/edit)
   const isClientsList = location.pathname === "/clients";
   const isInvoicesList = location.pathname === "/invoices";
 
@@ -162,7 +161,7 @@ export default function DashboardLayout() {
                 onMouseLeave={closeDropdown}
               >
                 <button
-                  onClick={() => navigate("/profile")}
+                  onClick={() => navigate("/user-profile")}
                   className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-600 hover:bg-gray-100"
                 >
                   <Settings size={16} />

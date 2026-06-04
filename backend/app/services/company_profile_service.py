@@ -30,6 +30,7 @@ class CompanyProfileService:
         company_name: str,
         company_email: str,
         company_mobile: str,
+        full_name: str,
         logo_file,
         address1: str,
         address2: str,
@@ -48,7 +49,7 @@ class CompanyProfileService:
             raise HTTPException(status_code=400, detail="Company already exists.")
 
         # 2) Validate + save logo
-        validate_fields(company_email, company_mobile, city, zip_code, tax_rate, logo_file)
+        validate_fields(company_email, company_mobile, city, full_name, zip_code, tax_rate, logo_file)
         logo_url = save_logo_file(logo_file)
 
         # 3) Create tenant DB (physical)
@@ -96,6 +97,7 @@ class CompanyProfileService:
                     company_name=company_name,
                     company_email=company_email,
                     company_mobile=company_mobile,
+                    full_name=full_name,
                     logo_url=logo_url,
                     address1=address1,
                     address2=address2,
@@ -128,6 +130,7 @@ class CompanyProfileService:
         company_name: Optional[str] = None,
         company_email: Optional[str] = None,
         company_mobile: Optional[str] = None,
+        full_name: Optional[str] = None,
         logo_file: Optional[Any] = None,
         address1: Optional[str] = None,
         address2: Optional[str] = None,
@@ -143,14 +146,15 @@ class CompanyProfileService:
             raise HTTPException(status_code=404, detail="No profile exists. Use register endpoint.")
 
         # Only validate what changes; logo may be omitted
-        if any(v is not None for v in [company_email, company_mobile, city, zip_code, tax_rate, logo_file]):
+        if any(v is not None for v in [company_email, company_mobile, city, full_name, zip_code, tax_rate, logo_file]):
             validate_fields(
                 company_email or existing.company_email,
                 company_mobile or existing.company_mobile,
                 city or existing.city,
+                full_name or getattr(existing, "full_name", "") or "",
                 zip_code or existing.zip_code,
                 tax_rate if tax_rate is not None else existing.tax_rate,
-                logo_file or None,
+                logo_file,
             )
 
         logo_url = existing.logo_url
@@ -161,6 +165,7 @@ class CompanyProfileService:
             **({"company_name": company_name} if company_name is not None else {}),
             **({"company_email": company_email} if company_email is not None else {}),
             **({"company_mobile": company_mobile} if company_mobile is not None else {}),
+            **({"full_name": full_name} if full_name is not None else {}),
             **({"logo_url": logo_url} if logo_url is not None else {}),
             **({"address1": address1} if address1 is not None else {}),
             **({"address2": address2} if address2 is not None else {}),

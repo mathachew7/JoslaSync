@@ -44,6 +44,11 @@ class CompanySettings(Base):
     show_logo_all_pages = Column(Boolean, nullable=False, default=False)
     show_watermark = Column(Boolean, nullable=False, default=False)
 
+    # Reminder settings
+    reminder_enabled = Column(Boolean, nullable=False, default=False)
+    reminder_frequency_days = Column(Integer, nullable=False, default=7)
+    reminder_max_count = Column(Integer, nullable=False, default=3)
+
     # Audit
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)

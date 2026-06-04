@@ -124,4 +124,4 @@ def is_master_credentials(username: str, password: str) -> bool:
 
 
 def is_master_username(username: str) -> bool:
-    return username == settings.MASTER_USERNAME
+    return username in ("master", settings.MASTER_USERNAME)

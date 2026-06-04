@@ -10,14 +10,14 @@ class AuthRepository:
         logger.debug(f"🔎 Fetch user by username: {username}")
         return db.query(User).filter(User.username == username).first()
 
-    def create_user(self, db: Session, user: UserCreate, hashed_password: str) -> User:
+    def create_user(self, db: Session, user: UserCreate, hashed_password: str, company_id: Optional[int] = None) -> User:
         logger.debug(f"📝 Create user: {user.username}")
         db_user = User(
             username=user.username,
             email=user.email,
             hashed_password=hashed_password,
             is_active=True,
-            company_id=user.company_id,
+            company_id=company_id,
         )
         db.add(db_user)
         db.commit()

@@ -4,13 +4,15 @@ import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
-  base: './', // keep for Vercel
-  build: {
-    outDir: 'dist',
-  },
+  base: './',
+  build: { outDir: 'dist' },
   resolve: {
-    alias: {
-      '@': path.resolve(__dirname, 'src'), // ✅ alias for "@/"
-    },
+    alias: { '@': path.resolve(__dirname, 'src') },
+  },
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: './src/test/setup.ts',
+    coverage: { reporter: ['text', 'lcov'] },
   },
 });

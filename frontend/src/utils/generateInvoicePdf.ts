@@ -1,54 +1,70 @@
+// src/utils/generateInvoicePdf.ts
 import { jsPDF } from "jspdf";
 
 // Define an interface for the data the PDF generator expects
 interface InvoiceData {
-  selectedClient: string;
+  selectedClient: string; // client person name (e.g., "Sharif Ahmadi")
+  clientCompany?: string; // client company name (e.g., "Dream Builders LLC")
+
   invoiceDate: string;
-  invoiceTitle: string;
+  invoiceTitle: string; // <- optional display section title (NOT status); if blank, no title shown
   lineItems: Array<{ description: string; quantity: number; price: number }>;
+
   discountEnabled: boolean;
   discountType: "percent" | "flat";
   discountValue: number;
   footerMessage: string;
   subtotal: number;
   discountAmount: number;
-  tax: number;
+  tax: number; // pass your computed taxAmount here
   total: number;
+
   companyName?: string;
   companyAddress1?: string;
-  companyAddress2?: string;
+  companyAddress2?: string; // e.g., "Suite 200" OR "Saint Louis, MO 63119"
   companyEmail?: string;
   companyMobile?: string;
+
+  // Optional company logo as a Data URL (e.g., "data:image/png;base64,...")
+  companyLogoDataUrl?: string;
+  companyLogoWidthMm?: number;   // optional explicit sizing (mm)
+  companyLogoHeightMm?: number;  // optional explicit sizing (mm)
+
   invoiceNumber?: string;
   dueDate?: string;
-  createdBy?: string;
+  createdBy?: string; // full name preferred (e.g., "Mohammad Sharif")
   clientEmail?: string;
   clientPhone?: string;
   pos?: string;
+
+  // Billing (client) address
   clientAddress1?: string;
   clientAddress2?: string;
   clientCity?: string;
+  clientState?: string;
   clientZip?: string;
   clientCountry?: string;
+
+  // Shipping address (if different; otherwise mirror billing)
   shippingAddress1?: string;
   shippingAddress2?: string;
   shippingCity?: string;
+  shippingState?: string;
   shippingZip?: string;
   shippingCountry?: string;
-  additionalInformation?: string;
-  status?: string;
 
+  additionalInformation?: string;
+  status?: string; // <- STATUS (e.g., "Invoice", "Estimate") shown in header, distinct from invoiceTitle
 }
 
 /**
  * Generates a professional-looking invoice PDF with 15mm margins, centered Billing Address,
- * company name as Josla Tech LLC in Saint Louis, MO 63119, random dummy company details,
  * navy dark blue text color (RGB 0,0,51), right-aligned bold "Total in Words," thin lines
  * above footers on all pages, borderless table with alternating row shades, and other
  * specified features. Uses form data and opens the PDF in a new tab.
  * @param {InvoiceData} data The invoice data to populate the PDF.
  */
-export const generateInvoicePdf = (data: InvoiceData) => {
+export const generateInvoicePdf = (data: InvoiceData, opts?: { returnDoc?: boolean }) => {
   const doc = new jsPDF({
     orientation: "p",
     unit: "mm",
@@ -77,11 +93,28 @@ export const generateInvoicePdf = (data: InvoiceData) => {
     doc.text(message, pageWidth / 2, footerY, { align: "center" });
   };
 
+  // --- Optional Company Logo (Top Left, above company details) ---
+  if (data.companyLogoDataUrl) {
+    const logoW = Math.max(10, Math.min(40, data.companyLogoWidthMm || 28));  // mm
+    const logoH = Math.max(6, Math.min(20, data.companyLogoHeightMm || 12));  // mm
+    try {
+      doc.addImage(data.companyLogoDataUrl, "PNG", marginX, currentY, logoW, logoH);
+      currentY += logoH + 4; // spacing after logo, before company text
+    } catch {
+      // If image fails, continue silently
+    }
+  }
+
   // --- Company Details (Top Left) ---
+  const companyName = data.companyName || "Josla Tech LLC";
+  const companyEmail = data.companyEmail || "info@joslatech.com";
+  const companyMobile = data.companyMobile || "314-555-7890";
+
   doc.setFontSize(10);
   doc.setFont("helvetica", "bold");
-  doc.text(data.companyName || "Josla Tech LLC", marginX, currentY);
+  doc.text(companyName, marginX, currentY);
   currentY += 5;
+
   doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
   doc.text(data.companyAddress1 || "1234 Olive Street", marginX, currentY);
@@ -92,12 +125,12 @@ export const generateInvoicePdf = (data: InvoiceData) => {
   currentY += 4;
   doc.text("UNITED STATES", marginX, currentY);
   currentY += 4;
-  doc.text(`Email: ${data.companyEmail || "info@joslatech.com"}`, marginX, currentY);
+  doc.text(`Email: ${companyEmail}`, marginX, currentY);
   currentY += 4;
-  doc.text(`Phone: ${data.companyMobile || "314-555-7890"}`, marginX, currentY);
+  doc.text(`Phone: ${companyMobile}`, marginX, currentY);
   currentY += 8;
 
-  // --- Invoice/Estimate Header (Top Right) ---
+  // --- Status Header (Top Right) ---
   const headerRightX = pageWidth - marginX;
   let headerRightY = marginY + 5;
 
@@ -105,15 +138,16 @@ export const generateInvoicePdf = (data: InvoiceData) => {
   doc.setFont("helvetica", "bold");
   doc.text(`${(data.status || "INVOICE").toUpperCase()}`, headerRightX, headerRightY, { align: "right" });
   headerRightY += 8;
+
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
   doc.text(`Number: ${data.invoiceNumber || "INV-2025-9876"}`, headerRightX, headerRightY, { align: "right" });
   headerRightY += 5;
-  doc.text(`Date: ${data.invoiceDate || "24-07-2025"}`, headerRightX, headerRightY, { align: "right" });
+  doc.text(`Date: ${data.invoiceDate || "2025-07-24"}`, headerRightX, headerRightY, { align: "right" });
   headerRightY += 5;
-  doc.text(`Due Date: ${data.dueDate || "24-08-2025"}`, headerRightX, headerRightY, { align: "right" });
+  doc.text(`Due Date: ${data.dueDate || "2025-08-24"}`, headerRightX, headerRightY, { align: "right" });
   headerRightY += 5;
-  doc.text(`Created by: ${data.createdBy || "Emma Carter"}`, headerRightX, headerRightY, { align: "right" });
+  doc.text(`Created by: ${data.createdBy || "Authorized User"}`, headerRightX, headerRightY, { align: "right" });
   headerRightY += 5;
   doc.text(`POS: ${data.pos || "MISSOURI"}`, headerRightX, headerRightY, { align: "right" });
 
@@ -125,23 +159,12 @@ export const generateInvoicePdf = (data: InvoiceData) => {
   doc.setDrawColor(0, 0, 0);
   currentY = underlineY + 6;
 
-  // --- Centered Invoice Title ---
-  doc.setFontSize(12);
-  doc.setFont("helvetica", "bold");
-  doc.text(data.invoiceTitle || "INVOICE", pageWidth / 2, currentY, { align: "center" });
-  currentY += 6;
-
-  doc.setLineWidth(0.1);
-  doc.setDrawColor(200, 200, 200);
-  doc.line(marginX, currentY, pageWidth - marginX, currentY);
-  doc.setDrawColor(0, 0, 0);
-  currentY += 6;
-
+  // (Removed the old "Centered Invoice Title" entirely to keep title separate from status)
 
   // --- Customer, Billing, Shipping Details (Three Columns) ---
-  const customerX = marginX; // 15mm
-  const billingX = pageWidth / 2; // ~105mm (center of page)
-  const shippingX = pageWidth - marginX; // ~195mm
+  const customerX = marginX;             // left aligned
+  const billingX = pageWidth / 2;        // centered column
+  const shippingX = pageWidth - marginX; // right aligned
 
   doc.setFontSize(10);
   doc.setFont("helvetica", "bold");
@@ -150,36 +173,78 @@ export const generateInvoicePdf = (data: InvoiceData) => {
   doc.text("Shipping Address", shippingX, currentY, { align: "right" });
   currentY += 5;
 
+  // Build address lines with fixed 4-row layout:
+  // 1) address1 + address2
+  // 2) City
+  // 3) State + Zip
+  // 4) Country
+  const cName = data.selectedClient || "John Doe";
+  const cCompany = data.clientCompany || "";
+
+  const b1 = data.clientAddress1 || "37100 Fremont Blvd suite k";
+  const b2 = data.clientAddress2 || "";
+  const bCity = data.clientCity || "Fremont";
+  const bState = data.clientState || "CA";
+  const bZip = data.clientZip || "94536";
+  const bCountry = data.clientCountry || "UNITED STATES";
+
+  const s1 = data.shippingAddress1 || b1;
+  const s2 = data.shippingAddress2 || b2;
+  const sCity = data.shippingCity || bCity;
+  const sState = data.shippingState || bState;
+  const sZip = data.shippingZip || bZip;
+  const sCountry = data.shippingCountry || bCountry;
+
+  const billLine1 = [b1, b2].filter(Boolean).join(" ");
+  const shipLine1 = [s1, s2].filter(Boolean).join(" ");
+  const billLine2 = bCity;
+  const shipLine2 = sCity;
+  const billLine3 = [bState, bZip].filter(Boolean).join(" ");
+  const shipLine3 = [sState, sZip].filter(Boolean).join(" ");
+  const billLine4 = bCountry;
+  const shipLine4 = sCountry;
+
   doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
-  const clientName = data.selectedClient || "John Doe";
-  doc.text(clientName, customerX, currentY);
-  doc.text(data.clientAddress1 || "37100 Fremont Blvd suite k", billingX, currentY, { align: "center" });
-  doc.text(data.shippingAddress1 || "37100 Fremont Blvd suite k", shippingX, currentY, { align: "right" });
+
+  // Row 1: Customer Name / (Addr1 + Addr2) / (Addr1 + Addr2)
+  doc.text(cName, customerX, currentY);
+  doc.text(billLine1, billingX, currentY, { align: "center" });
+  doc.text(shipLine1, shippingX, currentY, { align: "right" });
   currentY += 4;
-  doc.text(clientName, customerX, currentY);
-  doc.text(data.clientAddress2 || "Fremont", billingX, currentY, { align: "center" });
-  doc.text(data.shippingAddress2 || "Fremont", shippingX, currentY, { align: "right" });
+
+  // Row 2: Company (optional) / City / City
+  if (cCompany) doc.text(cCompany, customerX, currentY);
+  doc.text(billLine2, billingX, currentY, { align: "center" });
+  doc.text(shipLine2, shippingX, currentY, { align: "right" });
   currentY += 4;
-  doc.text(data.clientPhone || "5109750292", customerX, currentY);
-  doc.text(data.clientZip || "94536", billingX, currentY, { align: "center" });
-  doc.text(data.shippingZip || "94536", shippingX, currentY, { align: "right" });
+
+  // Row 3: Phone / (State + Zip) / (State + Zip)
+  doc.text(data.clientPhone || "3142158155", customerX, currentY);
+  doc.text(billLine3, billingX, currentY, { align: "center" });
+  doc.text(shipLine3, shippingX, currentY, { align: "right" });
   currentY += 4;
-  doc.text(data.clientEmail || "rajkrishna@momoandkebab.com", customerX, currentY);
-  doc.text(data.clientCountry || "UNITED STATES", billingX, currentY, { align: "center" });
-  doc.text(data.shippingCountry || "UNITED STATES", shippingX, currentY, { align: "right" });
+
+  // Row 4: Email / Country / Country
+  doc.text(data.clientEmail || "client@example.com", customerX, currentY);
+  doc.text(billLine4, billingX, currentY, { align: "center" });
+  doc.text(shipLine4, shippingX, currentY, { align: "right" });
   currentY += 10;
 
-  // --- Invoice Title ---
-  doc.setFontSize(12);
-  doc.setFont("helvetica", "bold");
-  doc.text("General Services Rendered", marginX, currentY);
-  currentY += 3;
-  doc.setLineWidth(0.1);
-  doc.setDrawColor(200, 200, 200);
-  doc.line(marginX, currentY, pageWidth - marginX, currentY);
-  doc.setDrawColor(0, 0, 0);
-  currentY += 4;
+  // --- Optional Invoice Title (separate from STATUS). If blank, show NOTHING. ---
+  const sectionTitle = (data.invoiceTitle || "").trim();
+  if (sectionTitle.length > 0) {
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text(sectionTitle, marginX, currentY);
+    currentY += 3;
+
+    doc.setLineWidth(0.1);
+    doc.setDrawColor(200, 200, 200);
+    doc.line(marginX, currentY, pageWidth - marginX, currentY);
+    doc.setDrawColor(0, 0, 0);
+    currentY += 4;
+  }
 
   // --- Line Items Table (No Borders, Alternating Shades) ---
   const tableStartX = marginX;
@@ -248,7 +313,7 @@ export const generateInvoicePdf = (data: InvoiceData) => {
     cellX += colWidths[0];
 
     let descY = rowStartY;
-    descriptionLines.forEach(line => {
+    descriptionLines.forEach((line) => {
       doc.text(line, cellX + cellPadding, descY);
       descY += textLineHeight;
     });
@@ -271,66 +336,58 @@ export const generateInvoicePdf = (data: InvoiceData) => {
   doc.setDrawColor(0, 0, 0);
   currentY += 6;
 
-  // --- Totals and Bank Details Section ---
-  const totalsBlockWidth = colWidths[4];
-  const totalsBlockX = tableStartX + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3];
-  const totalsValueX = totalsBlockX + totalsBlockWidth - cellPadding;
-  const bankDetailsX = marginX;
-  const totalsSpacing = 8;
-
-  // Check for page break
+  // Check for page break before totals
   if (currentY + 50 > pageHeight - marginY) {
     doc.addPage();
     currentY = marginY;
   }
 
-
   // --- Totals (Right-aligned) ---
-const totalsStartX = pageWidth - marginX - 70;
-const labelX = totalsStartX;
-const valueX = pageWidth - marginX;
-const totalsLineHeight = 6;
-currentY += 6;
+  const labelX = pageWidth - marginX - 70;
+  const valueX = pageWidth - marginX;
+  const totalsLineHeight = 6;
+  currentY += 6;
 
-doc.setFontSize(9);
+  doc.setFontSize(9);
 
-// Subtotal
-doc.setFont("helvetica", "normal");
-doc.text("Subtotal:", labelX, currentY);
-doc.setFont("helvetica", "bold");
-doc.text(`$${data.subtotal.toFixed(2)}`, valueX, currentY, { align: "right" });
-currentY += totalsLineHeight;
-
-// Discount (if enabled)
-if (data.discountEnabled && data.discountAmount > 0) {
-  const discountLabel =
-    data.discountType === "percent"
-      ? `Discount (${data.discountValue}%):`
-      : `Discount (Flat $${data.discountValue}):`;
-
+  // Subtotal
   doc.setFont("helvetica", "normal");
-  doc.text(discountLabel, labelX, currentY);
+  doc.text("Subtotal:", labelX, currentY);
   doc.setFont("helvetica", "bold");
-  doc.text(`-$${data.discountAmount.toFixed(2)}`, valueX, currentY, { align: "right" });
+  doc.text(`$${data.subtotal.toFixed(2)}`, valueX, currentY, { align: "right" });
   currentY += totalsLineHeight;
-}
 
-// Tax (if applied)
-if (data.tax > 0) {
-  const taxRate = ((data.tax / (data.subtotal - data.discountAmount)) * 100).toFixed(2);
+  // Discount (if enabled)
+  if (data.discountEnabled && data.discountAmount > 0) {
+    const discountLabel =
+      data.discountType === "percent"
+        ? `Discount (${data.discountValue}%):`
+        : `Discount (Flat $${data.discountValue}):`;
+
+    doc.setFont("helvetica", "normal");
+    doc.text(discountLabel, labelX, currentY);
+    doc.setFont("helvetica", "bold");
+    doc.text(`-$${data.discountAmount.toFixed(2)}`, valueX, currentY, { align: "right" });
+    currentY += totalsLineHeight;
+  }
+
+  // Tax (if applied)
+  if (data.tax > 0) {
+    const taxBase = Math.max(0, data.subtotal - data.discountAmount);
+    const taxRatePct = taxBase > 0 ? ((data.tax / taxBase) * 100).toFixed(2) : "0.00";
+    doc.setFont("helvetica", "normal");
+    doc.text(`Tax (${taxRatePct}%):`, labelX, currentY);
+    doc.setFont("helvetica", "bold");
+    doc.text(`$${data.tax.toFixed(2)}`, valueX, currentY, { align: "right" });
+    currentY += totalsLineHeight;
+  }
+
+  // Total
   doc.setFont("helvetica", "normal");
-  doc.text(`Tax (${taxRate}%):`, labelX, currentY);
+  doc.text("Total:", labelX, currentY);
   doc.setFont("helvetica", "bold");
-  doc.text(`$${data.tax.toFixed(2)}`, valueX, currentY, { align: "right" });
+  doc.text(`$${data.total.toFixed(2)}`, valueX, currentY, { align: "right" });
   currentY += totalsLineHeight;
-}
-
-// Total
-doc.setFont("helvetica", "normal");
-doc.text("Total:", labelX, currentY);
-doc.setFont("helvetica", "bold");
-doc.text(`$${data.total.toFixed(2)}`, valueX, currentY, { align: "right" });
-currentY += totalsLineHeight;
 
   // Total in Words with Horizontal Lines
   currentY += 8;
@@ -352,9 +409,9 @@ currentY += totalsLineHeight;
   // --- ADDITIONAL INFORMATION BLOCK (DYNAMIC AS TABLE) ---
   if (data.additionalInformation?.trim()) {
     const infoItems = data.additionalInformation
-      .split(/\n|\r/) // split by new lines
-      .map(line => line.trim())
-      .filter(line => line.length > 0); // remove blank lines
+      .split(/\n|\r/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
 
     if (infoItems.length > 0) {
       currentY += 10;
@@ -379,7 +436,6 @@ currentY += totalsLineHeight;
       // Draw table rows
       doc.setFont("helvetica", "normal");
       infoItems.forEach((item, index) => {
-        const lineHeight = 6;
         const descLines = doc.splitTextToSize(item, col2Width - 4);
         const rowHeight = descLines.length * 4 + 2;
 
@@ -406,7 +462,6 @@ currentY += totalsLineHeight;
     }
   }
 
-
   // Add footer to the first page
   addFooter(data.footerMessage || "Terms & Conditions on following page.");
 
@@ -418,6 +473,7 @@ currentY += totalsLineHeight;
   doc.setFont("helvetica", "bold");
   doc.text("Terms & Conditions", marginX, currentY);
   currentY += 3;
+
   doc.setLineWidth(0.1);
   doc.setDrawColor(200, 200, 200);
   doc.line(marginX, currentY, pageWidth - marginX, currentY);
@@ -426,12 +482,16 @@ currentY += totalsLineHeight;
 
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
+
+  const termsCompany = companyName;
+  const termsEmail = companyEmail;
+
   const termsContent = `
-Josla Tech LLC
+${termsCompany}
 
 These Terms & Conditions govern your use of our services, including software development, website design, brand development, and IT services. By engaging with our services you agree to comply with these Terms & Conditions.
 
-Services: Josla Tech LLC provides software, websites, brand development, and IT services. The scope of services will be outlined in a separate agreement or project proposal.
+Services: ${termsCompany} provides software, websites, brand development, and IT services. The scope of services will be outlined in a separate agreement or project proposal.
 
 1. Payment Terms
 - Invoices are issued upon project milestones or as agreed.
@@ -439,13 +499,13 @@ Services: Josla Tech LLC provides software, websites, brand development, and IT 
 - Late payments may incur a 1.5% monthly late fee.
 
 2. Intellectual Property
-All intellectual property rights remain with Josla Tech LLC until full payment is received. Upon full payment, rights transfer to the client as per the agreement.
+All intellectual property rights remain with ${termsCompany} until full payment is received. Upon full payment, rights transfer to the client as per the agreement.
 
 3. Confidentiality
 We will keep all client information confidential and will not disclose details without prior written consent, except as required by law.
 
 4. Liability
-Josla Tech LLC is not liable for indirect, incidental, or consequential damages from our services. Liability is limited to the amount paid for the service.
+${termsCompany} is not liable for indirect, incidental, or consequential damages from our services. Liability is limited to the amount paid for the service.
 
 5. Termination
 Either party may terminate with 30 days written notice. The client agrees to pay for all work completed up to the termination date.
@@ -454,10 +514,10 @@ Either party may terminate with 30 days written notice. The client agrees to pay
 These Terms & Conditions are governed by the laws of Missouri, USA. Disputes are subject to the exclusive jurisdiction of Missouri courts.
 
 7. Contact Information
-For questions or concerns, contact us at: info@joslatech.com
+For questions or concerns, contact us at: ${termsEmail}
 
 8. Amendments
-Josla Tech LLC reserves the right to amend these Terms & Conditions at any time. Clients will be notified of changes.
+${termsCompany} reserves the right to amend these Terms & Conditions at any time. Clients will be notified of changes.
   `;
   const splitText = doc.splitTextToSize(termsContent, pageWidth - 2 * marginX);
   doc.text(splitText, marginX, currentY);
@@ -465,7 +525,7 @@ Josla Tech LLC reserves the right to amend these Terms & Conditions at any time.
   currentY += splitText.length * 4 + 10;
   doc.setFontSize(10);
   doc.setFont("helvetica", "bold");
-  doc.text("For JOSLA TECH LLC", pageWidth - marginX, currentY, { align: "right" });
+  doc.text(`For ${termsCompany.toUpperCase()}`, pageWidth - marginX, currentY, { align: "right" });
   currentY += 5;
   doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
@@ -528,6 +588,6 @@ Josla Tech LLC reserves the right to amend these Terms & Conditions at any time.
     return words.trim();
   }
 
-  // Open the PDF in a new tab
+  if (opts?.returnDoc) return doc;
   window.open(doc.output("bloburl"), "_blank");
 };

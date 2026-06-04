@@ -30,6 +30,7 @@ export default function CompanyProfile() {
     zipCode: "",
     taxRate: "",
     status: "active",
+    full_name: "",
     // admin
     adminUsername: "",
     adminEmail: "",
@@ -65,7 +66,7 @@ export default function CompanyProfile() {
     const {
       companyName, companyEmail, companyMobile, logoFile,
       address1, address2, city, state, zipCode, taxRate,
-      adminUsername, adminEmail, adminPassword,
+      adminUsername, adminEmail, adminPassword, full_name,
     } = profile;
 
     if (!companyName) v.companyName = "Company Name is required";
@@ -81,6 +82,9 @@ export default function CompanyProfile() {
 
     if (!city) v.city = "City is required";
     else if (!/^[a-zA-Z\s]+$/.test(city)) v.city = "Only letters allowed";
+
+    if (!full_name) v.full_name = "Full Name is required";
+    else if (!/^[a-zA-Z\s]+$/.test(full_name)) v.full_name = "Only letters allowed in Full Name";
 
     if (!state) v.state = "State is required";
     if (!zipCode) v.zipCode = "Zip code is required";
@@ -116,6 +120,7 @@ export default function CompanyProfile() {
     formData.append("zip_code", profile.zipCode);
     formData.append("tax_rate", String(profile.taxRate));
     formData.append("status", profile.status);
+    formData.append("full_name", profile.full_name);
 
     // admin
     formData.append("admin_username", profile.adminUsername);
@@ -213,7 +218,8 @@ export default function CompanyProfile() {
                 <option value="inactive">Inactive</option>
               </select>
             </div>
-
+            
+            <Input label="Full Name" name="full_name" value={profile.full_name} onChange={handleChange} error={errors.full_name} autoComplete="full-name" />
             {/* Admin */}
             <h3 className="md:col-span-2 text-xl font-semibold text-gray-800 mt-4">Admin Account</h3>
 

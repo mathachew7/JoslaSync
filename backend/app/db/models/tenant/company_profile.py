@@ -13,6 +13,7 @@ class CompanyProfile(BaseTenant):  # 👈 this is for tenant DB
     address1 = Column(String)
     address2 = Column(String)
     city = Column(String)
+    full_name = Column(String)  # 👈 added full_name field
     state = Column(String)
     zip_code = Column(String)
     tax_rate = Column(String)

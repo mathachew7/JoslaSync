@@ -82,11 +82,10 @@ def ensure_tenant_tables(db_name: str):
     Ensure all tenant tables exist in the given tenant DB.
     IMPORTANT: import all tenant models before calling, so BaseTenant.metadata is populated.
     """
-    # Import required tenant models that exist in the repo
     from app.db.models.tenant import client as _client  # noqa: F401
     from app.db.models.tenant import company_profile as _company_profile  # noqa: F401
     from app.db.models.tenant import company_settings as _company_settings  # noqa: F401
-    # ⛔️ Do NOT import invoice here unless you actually have it.
+    from app.db.models.tenant import invoice as _invoice  # noqa: F401
 
     engine = get_engine_for_db(db_name)
     BaseTenant.metadata.create_all(bind=engine)
