@@ -70,6 +70,10 @@ class Invoice(BaseTenant, TimestampMixin):
     last_reminder_sent_at = Column(String(32), nullable=True)  # ISO date string "YYYY-MM-DD"
     reminder_count = Column(Integer, nullable=False, server_default="0")
 
+    # Amendment audit trail
+    edit_note = Column(Text, nullable=True)       # reason recorded when a finalized invoice is edited
+    last_edited_at = Column(String(32), nullable=True)  # ISO datetime string
+
     # Text blocks from UI
     footer_message = Column(Text, nullable=True)
     additional_information_raw = Column(Text, nullable=True)

@@ -18,6 +18,7 @@ class CompanyProfileBase(BaseModel):
     tax_rate: float
     logo_url: Optional[str] = None
     status: Optional[Status] = "active"
+    terms_and_conditions: Optional[str] = None
 
 class CompanyProfileCreate(CompanyProfileBase):
     pass
@@ -35,6 +36,7 @@ class CompanyProfileUpdate(BaseModel):
     tax_rate: Optional[float] = None
     status: Optional[Status] = None
     logo_url: Optional[str] = None
+    terms_and_conditions: Optional[str] = None
 
 class CompanyProfileOut(CompanyProfileBase):
     id: int

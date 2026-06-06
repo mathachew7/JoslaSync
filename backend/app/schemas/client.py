@@ -58,6 +58,8 @@ class ClientOut(ClientBase):
     created_by: str
     created_at: datetime
     updated_at: datetime
+    deleted_at: Optional[datetime] = None
+    deleted_by: Optional[str] = None
 
     class Config:
         from_attributes = True

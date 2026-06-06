@@ -50,10 +50,23 @@ class ClientService:
         logger.info(f"✅ client_service.update | id={obj.id}")
         return obj
 
-    def delete(self, db: Session, client_id: UUID) -> None:
-        logger.info(f"🗑️ client_service.delete | id={client_id}")
+    def list_deleted(self, db: Session):
+        logger.info("🗑️ client_service.list_deleted")
+        return client_repo.list_deleted(db)
+
+    def delete(self, db: Session, client_id: UUID, deleted_by: str) -> None:
+        logger.info(f"🗑️ client_service.delete (soft) | id={client_id} by={deleted_by}")
         obj = self.get(db, client_id)
-        client_repo.delete(db, obj)
+        client_repo.soft_delete(db, obj, deleted_by)
         logger.info(f"✅ client_service.delete | id={client_id}")
+
+    def restore(self, db: Session, client_id: UUID):
+        logger.info(f"♻️ client_service.restore | id={client_id}")
+        obj = client_repo.restore(db, client_id)
+        if not obj:
+            from fastapi import HTTPException, status as st
+            raise HTTPException(status_code=st.HTTP_404_NOT_FOUND, detail="Deleted client not found")
+        logger.info(f"✅ client_service.restore | id={client_id}")
+        return obj
 
 client_service = ClientService()

@@ -37,6 +37,7 @@ export interface InvoiceCreate {
   items: InvoiceItemCreate[];
   created_by_user_id?: UUID;
   created_by_name?: string;
+  edit_note?: string;
 }
 
 export interface InvoiceItemRead {
@@ -224,6 +225,10 @@ export function updateInvoice(id: UUID, payload: InvoiceCreate) {
 
 export function recordPayment(id: UUID, amount: number, note?: string) {
   return api.post<InvoiceRead>(`/api/invoices/${id}/pay`, { amount, note }).then(r => r.data);
+}
+
+export function adjustPayment(id: UUID, amount_paid: number, note?: string) {
+  return api.put<InvoiceRead>(`/api/invoices/${id}/payment`, { amount_paid, note }).then(r => r.data);
 }
 
 export function sendReminder(id: UUID) {

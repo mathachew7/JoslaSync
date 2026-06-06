@@ -1,7 +1,7 @@
 // src/pages/InvoiceDetail.jsx
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useParams, Link, useNavigate } from "react-router-dom";
-import { getInvoiceById, updateInvoice, voidInvoice, deleteInvoice, cloneInvoice, issueInvoice, recordPayment, sendInvoiceEmail, sendReminder } from "../../api/invoices";
+import { getInvoiceById, updateInvoice, voidInvoice, deleteInvoice, cloneInvoice, issueInvoice, recordPayment, adjustPayment, sendInvoiceEmail, sendReminder } from "../../api/invoices";
 import { getCompanyProfile, getCompanySettings } from "../../api/company";
 import { getClient } from "../../api/clients";
 import { generateInvoicePdf } from "../../utils/generateInvoicePdf";
@@ -116,6 +116,11 @@ export default function InvoiceDetail() {
   const [editMode, setEditMode] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(null);
+
+  // amendment (finalized invoice override)
+  const [amendModalOpen, setAmendModalOpen] = useState(false);
+  const [amendReason, setAmendReason] = useState("");
+  const [editNote, setEditNote] = useState("");
 
   // payment state
   const [payAmount, setPayAmount] = useState("");
@@ -461,31 +466,50 @@ export default function InvoiceDetail() {
   };
 
   /* edit-mode helpers */
+  const buildForm = (inv) => ({
+    invoice_title: inv.invoice_title || "",
+    invoice_date: inv.invoice_date,
+    due_date: inv.due_date || "",
+    place_of_supply: inv.place_of_supply || "",
+    discountEnabled: !!inv.discount_enabled,
+    discountType: (inv.discount_type || "PERCENT").toUpperCase(),
+    discountValue: Number(inv.discount_value || 0),
+    taxRate: Number(inv.tax_rate || 0),
+    footerMessage: inv.footer_message || "",
+    additionalInformation: inv.additional_information_raw || "",
+    lineItems: (inv.items || []).map((it) => ({
+      description: it.description || "",
+      quantity: Number(it.quantity) || 0,
+      price: Number(it.unit_price) || 0,
+    })),
+  });
+
   const enterEdit = () => {
     if (!invoice) return;
-    setForm({
-      invoice_title: invoice.invoice_title || "",
-      invoice_date: invoice.invoice_date,
-      due_date: invoice.due_date || "",
-      place_of_supply: invoice.place_of_supply || "",
-      discountEnabled: !!invoice.discount_enabled,
-      discountType: (invoice.discount_type || "PERCENT").toUpperCase(),
-      discountValue: Number(invoice.discount_value || 0),
-      taxRate: Number(invoice.tax_rate || 0),
-      footerMessage: invoice.footer_message || "",
-      additionalInformation: invoice.additional_information_raw || "",
-      lineItems: (invoice.items || []).map((it) => ({
-        description: it.description || "",
-        quantity: Number(it.quantity) || 0,
-        price: Number(it.unit_price) || 0,
-      })),
-    });
+    const statusUp = (invoice.status || "").toUpperCase();
+    if (statusUp === "INVOICE") {
+      // Finalized — require amendment reason first
+      setAmendReason("");
+      setAmendModalOpen(true);
+    } else {
+      setEditNote("");
+      setForm(buildForm(invoice));
+      setEditMode(true);
+    }
+  };
+
+  const confirmAmend = () => {
+    if (!amendReason.trim()) return;
+    setEditNote(amendReason.trim());
+    setAmendModalOpen(false);
+    setForm(buildForm(invoice));
     setEditMode(true);
   };
 
   const cancelEdit = () => {
     setEditMode(false);
     setForm(null);
+    setEditNote("");
   };
 
   const handleLineItemChange = (index, field, value) => {
@@ -533,6 +557,7 @@ export default function InvoiceDetail() {
         quantity: Number(li.quantity),
         unit_price: Number(li.price),
       })),
+    ...(editNote ? { edit_note: editNote } : {}),
   });
 
   const validateFormHasItem = () =>
@@ -705,7 +730,7 @@ export default function InvoiceDetail() {
   const statusUp = (invoice.status || "").toUpperCase();
   const isVoid = statusUp === "VOID";
   const isDraft = statusUp === "DRAFT";
-  const canEdit = isDraft;
+  const isInvoice = statusUp === "INVOICE";
   const showItems = editMode ? form?.lineItems || [] : itemsView;
 
   return (
@@ -749,15 +774,15 @@ export default function InvoiceDetail() {
               </button>
             )}
 
-            {/* DRAFT → Edit */}
-            {!editMode && isDraft && (
+            {/* DRAFT or INVOICE → Edit */}
+            {!editMode && (isDraft || isInvoice) && (
               <button
                 onClick={enterEdit}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border hover:bg-gray-50"
-                title="Edit draft"
+                className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border hover:bg-gray-50 ${isInvoice ? "text-amber-700 border-amber-200 hover:bg-amber-50" : ""}`}
+                title={isInvoice ? "Amend finalized invoice" : "Edit draft"}
               >
                 <Pencil size={18} />
-                <span>Edit</span>
+                <span>{isInvoice ? "Amend" : "Edit"}</span>
               </button>
             )}
 
@@ -775,15 +800,12 @@ export default function InvoiceDetail() {
 
             {editMode && (
               <>
-                {/* Save buttons differ for DRAFT */}
-                {isDraft ? (
+                {isDraft && (
                   <>
                     <button
                       onClick={onSave}
                       disabled={saving}
-                      className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg ${
-                        saving ? "bg-emerald-300" : "bg-emerald-600 hover:bg-emerald-700"
-                      } text-white`}
+                      className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg ${saving ? "bg-emerald-300" : "bg-emerald-600 hover:bg-emerald-700"} text-white`}
                     >
                       <Save size={18} />
                       <span>{saving ? "Saving…" : "Save Draft"}</span>
@@ -791,16 +813,24 @@ export default function InvoiceDetail() {
                     <button
                       onClick={saveAndIssue}
                       disabled={saving}
-                      className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg ${
-                        saving ? "bg-indigo-300" : "bg-indigo-600 hover:bg-indigo-700"
-                      } text-white`}
-                      title="Save changes and issue as final invoice"
+                      className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg ${saving ? "bg-indigo-300" : "bg-indigo-600 hover:bg-indigo-700"} text-white`}
                     >
                       <CopyIcon size={18} />
                       <span>{saving ? "Issuing…" : "Save & Issue"}</span>
                     </button>
                   </>
-                ) : null}
+                )}
+
+                {isInvoice && (
+                  <button
+                    onClick={onSave}
+                    disabled={saving}
+                    className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg ${saving ? "bg-amber-300" : "bg-amber-600 hover:bg-amber-700"} text-white`}
+                  >
+                    <Save size={18} />
+                    <span>{saving ? "Saving…" : "Save Amendment"}</span>
+                  </button>
+                )}
 
                 <button
                   onClick={cancelEdit}
@@ -842,6 +872,25 @@ export default function InvoiceDetail() {
       {isDraft && (
         <div className="p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-700 flex items-center gap-2">
           <Pencil size={16} /> This invoice is a DRAFT. You can edit and <b>Save &amp; Issue</b> to finalize with a new number.
+        </div>
+      )}
+
+      {editMode && isInvoice && editNote && (
+        <div className="p-3 rounded-lg border border-orange-300 bg-orange-50 text-orange-800 flex items-start gap-2">
+          <ShieldAlert size={16} className="shrink-0 mt-0.5" />
+          <div>
+            <span className="font-semibold">Amending finalized invoice</span>
+            <span className="text-orange-600"> — </span>
+            <span className="italic">{editNote}</span>
+            <span className="block text-xs text-orange-500 mt-0.5">This reason will be stored as an audit note on the invoice.</span>
+          </div>
+        </div>
+      )}
+
+      {!editMode && invoice.edit_note && (
+        <div className="p-3 rounded-lg border border-gray-200 bg-gray-50 text-gray-600 flex items-start gap-2 text-sm">
+          <FileText size={15} className="shrink-0 mt-0.5 text-gray-400" />
+          <span><span className="font-medium text-gray-700">Amendment note:</span> {invoice.edit_note}</span>
         </div>
       )}
 
@@ -1158,24 +1207,23 @@ export default function InvoiceDetail() {
               )}
             </div>
 
-            {/* Additional Info */}
+            {/* Terms & Conditions */}
             <div className="p-4 bg-gray-50 rounded-xl border">
               <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">
-                Additional Information
+                Terms & Conditions
               </div>
               {editMode ? (
                 <textarea
-                  rows={5}
-                  className="w-full border rounded p-2 text-sm"
+                  rows={8}
+                  className="w-full border rounded p-2 text-sm resize-y focus:outline-none focus:border-blue-400"
                   value={form.additionalInformation}
                   onChange={(e) => setForm((f) => ({ ...f, additionalInformation: e.target.value }))}
+                  placeholder="Enter terms & conditions…"
                 />
-              ) : invoice.additional_information_raw ? (
-                <div className="text-sm text-gray-800 whitespace-pre-line">
-                  {invoice.additional_information_raw}
-                </div>
               ) : (
-                <div className="text-sm text-gray-400">—</div>
+                <div className="text-sm text-gray-800 whitespace-pre-line">
+                  {invoice.additional_information_raw || <span className="text-gray-400">No terms set — edit to add.</span>}
+                </div>
               )}
             </div>
           </div>
@@ -1406,6 +1454,50 @@ export default function InvoiceDetail() {
         </Link>
       </div>
 
+      {/* Amendment Reason Modal */}
+      {amendModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/30" onClick={() => setAmendModalOpen(false)} />
+          <div className="relative z-10 w-full max-w-md bg-white rounded-2xl shadow-xl border p-6 space-y-4">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="text-amber-600" size={20} />
+              <h3 className="text-lg font-semibold">Amend Finalized Invoice</h3>
+            </div>
+            <p className="text-sm text-gray-500">
+              This invoice has already been issued. Any changes will be recorded with your reason for audit purposes.
+            </p>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                Reason for amendment <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                autoFocus
+                rows={3}
+                value={amendReason}
+                onChange={(e) => setAmendReason(e.target.value)}
+                placeholder="e.g. Corrected tax rate, added missed line item, fixed client address…"
+                className="w-full border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:border-amber-400"
+              />
+              {!amendReason.trim() && (
+                <p className="text-xs text-red-500 mt-1">A reason is required before editing.</p>
+              )}
+            </div>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setAmendModalOpen(false)} className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50">
+                Cancel
+              </button>
+              <button
+                onClick={confirmAmend}
+                disabled={!amendReason.trim()}
+                className="px-4 py-2 text-sm rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40"
+              >
+                Continue to Edit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Send Invoice Modal */}
       {sendOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -1477,11 +1569,16 @@ export default function InvoiceDetail() {
 
 /* ── PaymentCard ─────────────────────────────────────────────────── */
 function PaymentCard({ invoice, payAmount, setPayAmount, paying, setPaying, setInvoice, setDialogType, setDialogMessage, setDialogOpen }) {
-  const amountPaid = Number(invoice.amount_paid ?? 0);
-  const total      = Number(invoice.total ?? 0);
-  const remaining  = Math.max(0, total - amountPaid);
-  const pct        = total > 0 ? Math.min(100, (amountPaid / total) * 100) : 0;
+  const amountPaid  = Number(invoice.amount_paid ?? 0);
+  const total       = Number(invoice.total ?? 0);
+  const remaining   = Math.max(0, total - amountPaid);
+  const pct         = total > 0 ? Math.min(100, (amountPaid / total) * 100) : 0;
   const isFullyPaid = amountPaid >= total;
+
+  const [adjustMode, setAdjustMode] = useState(false);
+  const [adjustValue, setAdjustValue] = useState("");
+  const [adjustNote, setAdjustNote] = useState("");
+  const [adjusting, setAdjusting] = useState(false);
 
   const fmt = (n) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number(n || 0));
 
@@ -1505,18 +1602,50 @@ function PaymentCard({ invoice, payAmount, setPayAmount, paying, setPaying, setI
     }
   };
 
+  const handleAdjust = async () => {
+    const val = parseFloat(adjustValue);
+    if (isNaN(val) || val < 0) return;
+    setAdjusting(true);
+    try {
+      const updated = await adjustPayment(invoice.id, val, adjustNote || undefined);
+      setInvoice(updated);
+      setAdjustMode(false);
+      setAdjustValue("");
+      setAdjustNote("");
+      setDialogType("success");
+      setDialogMessage(`Payment corrected to ${fmt(val)}.`);
+      setDialogOpen(true);
+    } catch (e) {
+      setDialogType("error");
+      setDialogMessage(e?.response?.data?.detail || "Failed to adjust payment.");
+      setDialogOpen(true);
+    } finally {
+      setAdjusting(false);
+    }
+  };
+
   return (
     <div className="p-5 bg-white rounded-2xl shadow-sm border">
       <div className="flex items-center justify-between mb-3">
         <div className="font-semibold text-gray-800">Payment</div>
-        {isFullyPaid ? (
-          <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">Paid in Full</span>
-        ) : amountPaid > 0 ? (
-          <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-amber-50 text-amber-700 ring-1 ring-amber-200">Partial</span>
-        ) : (
-          <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-gray-100 text-gray-500 ring-1 ring-gray-200">Unpaid</span>
-        )}
+        <div className="flex items-center gap-2">
+          {isFullyPaid ? (
+            <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">Paid in Full</span>
+          ) : amountPaid > 0 ? (
+            <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-amber-50 text-amber-700 ring-1 ring-amber-200">Partial</span>
+          ) : (
+            <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-gray-100 text-gray-500 ring-1 ring-gray-200">Unpaid</span>
+          )}
+          <button
+            onClick={() => { setAdjustMode((v) => !v); setAdjustValue(String(amountPaid.toFixed(2))); setAdjustNote(""); }}
+            className="text-xs px-2 py-1 rounded border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+            title="Correct a payment mistake"
+          >
+            Correct
+          </button>
+        </div>
       </div>
+
       <div className="w-full bg-gray-100 rounded-full h-2 mb-3">
         <div className="bg-emerald-500 h-2 rounded-full transition-all" style={{ width: `${pct}%` }} />
       </div>
@@ -1525,8 +1654,10 @@ function PaymentCard({ invoice, payAmount, setPayAmount, paying, setPaying, setI
         <span>Remaining: <span className="font-semibold text-gray-800">{fmt(remaining)}</span></span>
         <span>Total: <span className="font-semibold">{fmt(total)}</span></span>
       </div>
-      {!isFullyPaid && (
-        <div className="flex items-center gap-2 mt-1">
+
+      {/* Normal payment entry */}
+      {!isFullyPaid && !adjustMode && (
+        <div className="flex items-center gap-2">
           <input
             type="number" min="0.01" step="0.01" max={remaining}
             value={payAmount}
@@ -1542,6 +1673,40 @@ function PaymentCard({ invoice, payAmount, setPayAmount, paying, setPaying, setI
             className="px-3 py-2 text-sm rounded-lg border hover:bg-gray-50 text-gray-600">
             Pay Full
           </button>
+        </div>
+      )}
+
+      {/* Payment correction panel */}
+      {adjustMode && (
+        <div className="mt-2 p-4 rounded-xl border border-amber-200 bg-amber-50 space-y-3">
+          <p className="text-xs text-amber-700 font-medium flex items-center gap-1">
+            <ShieldAlert size={13} /> Correction mode — set the exact amount already paid.
+          </p>
+          <div className="flex items-center gap-2">
+            <input
+              type="number" min="0" step="0.01"
+              value={adjustValue}
+              onChange={(e) => setAdjustValue(e.target.value)}
+              placeholder="Correct paid amount"
+              className="border rounded-lg px-3 py-2 text-sm w-44 focus:outline-none focus:border-amber-400"
+            />
+            <input
+              type="text"
+              value={adjustNote}
+              onChange={(e) => setAdjustNote(e.target.value)}
+              placeholder="Reason (optional)"
+              className="border rounded-lg px-3 py-2 text-sm flex-1 focus:outline-none focus:border-amber-400"
+            />
+          </div>
+          <div className="flex gap-2">
+            <button onClick={handleAdjust} disabled={adjusting || adjustValue === ""}
+              className="px-4 py-2 text-sm rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50">
+              {adjusting ? "Saving…" : "Save Correction"}
+            </button>
+            <button onClick={() => setAdjustMode(false)} className="px-3 py-2 text-sm rounded-lg border hover:bg-gray-50">
+              Cancel
+            </button>
+          </div>
         </div>
       )}
     </div>

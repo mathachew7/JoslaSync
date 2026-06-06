@@ -18,8 +18,21 @@ import {
   Link as LinkIcon,
   Clipboard,
   Plus,
+  Building2,
+  MapPin,
+  Bell,
+  FileText,
+  ShieldCheck,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
+
+const TABS = [
+  { id: "company",   label: "Company",    icon: Building2 },
+  { id: "address",   label: "Address & Tax", icon: MapPin },
+  { id: "reminders", label: "Reminders",  icon: Bell },
+  { id: "legal",     label: "Legal",      icon: FileText },
+  { id: "security",  label: "Security",   icon: ShieldCheck },
+];
 
 export default function UserProfile() {
   const { user, ready } = useAuth();
@@ -28,10 +41,16 @@ export default function UserProfile() {
     (user?.roles?.includes?.("MASTER") ||
       user?.email === import.meta.env.VITE_MASTER_EMAIL);
 
-  const [reminderSettings, setReminderSettings] = useState({ reminder_enabled: false, reminder_frequency_days: 7, reminder_max_count: 3 });
+  const [activeTab, setActiveTab] = useState("company");
+
+  const [reminderSettings, setReminderSettings] = useState({
+    reminder_enabled: false,
+    reminder_frequency_days: 7,
+    reminder_max_count: 3,
+  });
   const [savingReminder, setSavingReminder] = useState(false);
 
-  const [initial, setInitial] = useState(null); // null = unknown yet; {} = missing profile
+  const [initial, setInitial] = useState(null);
   const [profile, setProfile] = useState(null);
   const [logoPreview, setLogoPreview] = useState(null);
 
@@ -47,18 +66,10 @@ export default function UserProfile() {
   const dirty = useMemo(() => {
     if (!initial || !profile) return false;
     const keys = [
-      "company_name",
-      "company_email",
-      "company_mobile",
-      "address1",
-      "address2",
-      "city",
-      "state",
-      "zip_code",
-      "tax_rate",
-      "status",
-      "username",
-      "email",
+      "company_name", "company_email", "company_mobile",
+      "address1", "address2", "city", "state", "zip_code",
+      "tax_rate", "status", "username", "email",
+      "terms_and_conditions",
     ];
     for (const k of keys) {
       if ((initial[k] ?? "") !== (profile[k] ?? "")) return true;
@@ -68,59 +79,41 @@ export default function UserProfile() {
   }, [initial, profile]);
 
   const initials = (name) =>
-    name
-      ? name
-          .split(" ")
-          .map((n) => n[0]?.toUpperCase())
-          .join("")
-          .slice(0, 2)
-      : "";
+    name ? name.split(" ").map((n) => n[0]?.toUpperCase()).join("").slice(0, 2) : "";
 
-  // Load profile
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
-        const [data, cs] = await Promise.all([getCompanyProfile(), getCompanySettings().catch(() => null)]);
+        const [data, cs] = await Promise.all([
+          getCompanyProfile(),
+          getCompanySettings().catch(() => null),
+        ]);
         if (!alive) return;
-        if (cs) setReminderSettings({ reminder_enabled: !!cs.reminder_enabled, reminder_frequency_days: cs.reminder_frequency_days ?? 7, reminder_max_count: cs.reminder_max_count ?? 3 });
+        if (cs)
+          setReminderSettings({
+            reminder_enabled: !!cs.reminder_enabled,
+            reminder_frequency_days: cs.reminder_frequency_days ?? 7,
+            reminder_max_count: cs.reminder_max_count ?? 3,
+          });
         setInitial(data);
-        setProfile({
-          ...data,
-          username: data.username || "",
-          email: data.company_email || "",
-          password: "",
-        });
+        setProfile({ ...data, username: data.username || "", email: data.company_email || "", password: "" });
         setLogoPreview(data.logo_url || null);
-      } catch (err) {
-        // If the backend returns 404 when no profile exists, treat as "missing"
+      } catch {
         if (!alive) return;
-        setInitial({}); // mark as loaded but missing
+        setInitial({});
         setProfile({
-          company_name: "",
-          company_email: "",
-          company_mobile: "",
-          address1: "",
-          address2: "",
-          city: "",
-          state: "",
-          zip_code: "",
-          tax_rate: "",
-          status: "Active",
-          username: "",
-          email: "",
-          password: "",
-          logoFile: null,
+          company_name: "", company_email: "", company_mobile: "",
+          address1: "", address2: "", city: "", state: "", zip_code: "",
+          tax_rate: "", status: "Active", username: "", email: "", password: "",
+          logoFile: null, terms_and_conditions: "",
         });
         setLogoPreview(null);
       } finally {
         if (alive) setLoading(false);
       }
     })();
-    return () => {
-      alive = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => { alive = false; };
   }, []);
 
   const handleChange = (e) => {
@@ -140,43 +133,21 @@ export default function UserProfile() {
   };
 
   const resetChanges = () => {
-    setProfile({
-      ...initial,
-      username: initial.username || "",
-      email: initial.company_email || "",
-      password: "",
-    });
+    setProfile({ ...initial, username: initial.username || "", email: initial.company_email || "", password: "" });
     setLogoPreview(initial?.logo_url || null);
   };
 
-  // Helpers to build FormData for create/update
   const buildFormData = (obj) => {
     const fd = new FormData();
-    const entries = { ...obj };
-    // File
-    if (entries.logoFile instanceof File) {
-      fd.append("logoFile", entries.logoFile);
-    }
-    // Simple fields
+    if (obj.logoFile instanceof File) fd.append("logoFile", obj.logoFile);
     [
-      "company_name",
-      "company_email",
-      "company_mobile",
-      "address1",
-      "address2",
-      "city",
-      "state",
-      "zip_code",
-      "tax_rate",
-      "status",
-      "username",
-      "email",
-      "password",
+      "company_name", "company_email", "company_mobile",
+      "address1", "address2", "city", "state", "zip_code",
+      "tax_rate", "status", "username", "email", "password",
+      "terms_and_conditions",
     ].forEach((k) => {
-      const v = entries[k];
-      if (v !== undefined && v !== null && v !== "") {
-        fd.append(k, String(v));
-      }
+      const v = obj[k];
+      if (v !== undefined && v !== null && v !== "") fd.append(k, String(v));
     });
     return fd;
   };
@@ -190,18 +161,9 @@ export default function UserProfile() {
       delete payload.db_name;
       delete payload.updated_at;
       if (!payload.password) delete payload.password;
-
-      // updateCompanyProfile accepts FormData or Partial<CompanyProfile>
-      const updated = await updateCompanyProfile(
-        payload.logoFile ? buildFormData(payload) : payload
-      );
+      const updated = await updateCompanyProfile(payload.logoFile ? buildFormData(payload) : payload);
       setInitial(updated);
-      setProfile({
-        ...updated,
-        username: updated.username || "",
-        email: updated.company_email || "",
-        password: "",
-      });
+      setProfile({ ...updated, username: updated.username || "", email: updated.company_email || "", password: "" });
       setLogoPreview(updated.logo_url || null);
       setToast({ show: true, type: "success", msg: "Profile updated" });
       setEditing(false);
@@ -215,11 +177,7 @@ export default function UserProfile() {
   const handleCreate = async (e) => {
     e.preventDefault();
     if (!isMaster) {
-      setToast({
-        show: true,
-        type: "error",
-        msg: "Only master can create the company profile.",
-      });
+      setToast({ show: true, type: "error", msg: "Only master can create the company profile." });
       return;
     }
     setSaving(true);
@@ -227,21 +185,12 @@ export default function UserProfile() {
       const fd = buildFormData(profile);
       const created = await registerCompanyProfile(fd);
       setInitial(created);
-      setProfile({
-        ...created,
-        username: created.username || "",
-        email: created.company_email || "",
-        password: "",
-      });
+      setProfile({ ...created, username: created.username || "", email: created.company_email || "", password: "" });
       setLogoPreview(created.logo_url || null);
       setToast({ show: true, type: "success", msg: "Company profile created" });
       setEditing(false);
     } catch {
-      setToast({
-        show: true,
-        type: "error",
-        msg: "Failed to create company profile",
-      });
+      setToast({ show: true, type: "error", msg: "Failed to create company profile" });
     } finally {
       setSaving(false);
     }
@@ -251,11 +200,7 @@ export default function UserProfile() {
     const url = `${window.location.origin}/company-profile`;
     try {
       await navigator.clipboard.writeText(url);
-      setToast({
-        show: true,
-        type: "success",
-        msg: "Link copied: /company-profile",
-      });
+      setToast({ show: true, type: "success", msg: "Link copied: /company-profile" });
     } catch {
       setToast({ show: true, type: "error", msg: "Failed to copy link" });
     }
@@ -274,41 +219,228 @@ export default function UserProfile() {
 
   const profileExists = !!initial && Object.keys(initial).length > 0;
 
-  return (
-    <div className="mx-auto max-w-5xl space-y-8">
-      {toast.show && (
-        <DialogBox
-          message={toast.msg}
-          type={toast.type}
-          onClose={() => setToast((t) => ({ ...t, show: false }))}
+  // ── Tab content renderers ─────────────────────────────────────────────────
+
+  const field = (props) => (
+    <input
+      {...props}
+      disabled={props.disabled ?? !editing}
+      className={cx(
+        "border rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:border-blue-400",
+        (props.disabled ?? !editing) ? "bg-gray-50 text-gray-500" : "bg-white"
+      )}
+    />
+  );
+
+  const TabCompany = ({ create = false }) => (
+    <div className="space-y-6">
+      <div className="flex items-center gap-6">
+        <div className="relative shrink-0">
+          {logoPreview ? (
+            <img src={logoPreview} alt="Logo" className="h-20 w-20 rounded-xl object-cover ring-1 ring-gray-200" />
+          ) : (
+            <div className="h-20 w-20 rounded-xl bg-blue-100 ring-1 ring-gray-200 grid place-items-center text-blue-700 font-bold text-lg">
+              {initials(profile.company_name)}
+            </div>
+          )}
+          {(create || editing) && (
+            <label className="absolute -bottom-2 -right-2 cursor-pointer inline-flex items-center justify-center h-9 w-9 rounded-full bg-white shadow border hover:bg-gray-50">
+              <Camera size={16} />
+              <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
+            </label>
+          )}
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 w-full">
+          {field({ type: "text",  name: "company_name",   value: profile.company_name   || "", onChange: handleChange, placeholder: "Company Name",   ...(create ? { disabled: false } : {}) })}
+          {field({ type: "email", name: "company_email",  value: profile.company_email  || "", onChange: handleChange, placeholder: "Company Email",  ...(create ? { disabled: false } : {}) })}
+          {field({ type: "text",  name: "company_mobile", value: profile.company_mobile || "", onChange: handleChange, placeholder: "Mobile Number",  ...(create ? { disabled: false } : {}) })}
+          <select
+            name="status"
+            value={profile.status || "Active"}
+            onChange={handleChange}
+            disabled={create ? false : !editing}
+            className={cx(
+              "border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400",
+              (!create && !editing) ? "bg-gray-50 text-gray-500" : "bg-white"
+            )}
+          >
+            {["Active", "Deactivated", "Blacklisted"].map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+    </div>
+  );
+
+  const TabAddress = ({ create = false }) => (
+    <div className="grid gap-4 md:grid-cols-2">
+      {field({ type: "text",   name: "address1",  value: profile.address1  || "", onChange: handleChange, placeholder: "Address Line 1", ...(create ? { disabled: false } : {}) })}
+      {field({ type: "text",   name: "address2",  value: profile.address2  || "", onChange: handleChange, placeholder: "Address Line 2", ...(create ? { disabled: false } : {}) })}
+      {field({ type: "text",   name: "city",      value: profile.city      || "", onChange: handleChange, placeholder: "City",            ...(create ? { disabled: false } : {}) })}
+      {field({ type: "text",   name: "state",     value: profile.state     || "", onChange: handleChange, placeholder: "State",           ...(create ? { disabled: false } : {}) })}
+      {field({ type: "text",   name: "zip_code",  value: profile.zip_code  || "", onChange: handleChange, placeholder: "Zip Code",        ...(create ? { disabled: false } : {}) })}
+      {field({ type: "number", name: "tax_rate",  value: profile.tax_rate  ?? "",  onChange: handleChange, placeholder: "Tax Rate (%)",   step: "0.01", ...(create ? { disabled: false } : {}) })}
+    </div>
+  );
+
+  const TabReminders = () => (
+    <div className="space-y-5">
+      <p className="text-sm text-gray-500">Configure automatic reminder frequency for overdue invoices.</p>
+      <div className="grid gap-4 md:grid-cols-3 items-end">
+        <div className="flex items-center gap-3">
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={reminderSettings.reminder_enabled}
+              onChange={(e) => setReminderSettings((s) => ({ ...s, reminder_enabled: e.target.checked }))}
+              className="sr-only peer"
+            />
+            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-indigo-600 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all" />
+          </label>
+          <span className="text-sm font-medium text-gray-700">
+            {reminderSettings.reminder_enabled ? "Enabled" : "Disabled"}
+          </span>
+        </div>
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">Frequency</label>
+          <select
+            value={reminderSettings.reminder_frequency_days}
+            onChange={(e) => setReminderSettings((s) => ({ ...s, reminder_frequency_days: Number(e.target.value) }))}
+            disabled={!reminderSettings.reminder_enabled}
+            className="w-full border rounded-lg px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-400 focus:outline-none"
+          >
+            <option value={3}>Every 3 days</option>
+            <option value={7}>Every 7 days</option>
+            <option value={14}>Every 14 days</option>
+            <option value={30}>Every 30 days</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">Max reminders</label>
+          <select
+            value={reminderSettings.reminder_max_count}
+            onChange={(e) => setReminderSettings((s) => ({ ...s, reminder_max_count: Number(e.target.value) }))}
+            disabled={!reminderSettings.reminder_enabled}
+            className="w-full border rounded-lg px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-400 focus:outline-none"
+          >
+            <option value={1}>1 reminder</option>
+            <option value={2}>2 reminders</option>
+            <option value={3}>3 reminders</option>
+            <option value={5}>5 reminders</option>
+          </select>
+        </div>
+      </div>
+      {reminderSettings.reminder_enabled && (
+        <p className="text-xs text-gray-500">
+          Reminders will be sent every <strong>{reminderSettings.reminder_frequency_days} days</strong>, up to{" "}
+          <strong>{reminderSettings.reminder_max_count}×</strong> per invoice.
+        </p>
+      )}
+      <button
+        onClick={async () => {
+          setSavingReminder(true);
+          try {
+            await updateReminderSettings(reminderSettings);
+            setToast({ show: true, type: "success", msg: "Reminder settings saved." });
+          } catch {
+            setToast({ show: true, type: "error", msg: "Failed to save reminder settings." });
+          } finally {
+            setSavingReminder(false);
+          }
+        }}
+        disabled={savingReminder}
+        className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition"
+      >
+        {savingReminder && <Loader2 size={14} className="animate-spin" />}
+        Save Reminder Settings
+      </button>
+    </div>
+  );
+
+  const TabLegal = ({ create = false }) => (
+    <div className="space-y-3">
+      <p className="text-sm text-gray-500">This will be auto-filled on every invoice you generate. You can still edit it per invoice.</p>
+      <textarea
+        name="terms_and_conditions"
+        value={profile.terms_and_conditions || ""}
+        onChange={handleChange}
+        disabled={create ? false : !editing}
+        rows={12}
+        placeholder="Enter your terms & conditions…"
+        className={cx(
+          "w-full border rounded-lg px-3 py-2 text-sm resize-y focus:outline-none focus:border-blue-400",
+          (!create && !editing) ? "bg-gray-50 text-gray-500" : "bg-white"
+        )}
+      />
+    </div>
+  );
+
+  const TabSecurity = ({ create = false }) => (
+    <div className="grid gap-4 md:grid-cols-2">
+      {field({ type: "text",  name: "username", value: profile.username || "", onChange: handleChange, placeholder: "Username",    ...(create ? { disabled: false } : {}) })}
+      {field({ type: "email", name: "email",    value: profile.email    || "", onChange: handleChange, placeholder: "Login Email", ...(create ? { disabled: false } : {}) })}
+      <div className="relative">
+        <input
+          type={showPassword ? "text" : "password"}
+          name="password"
+          value={profile.password || ""}
+          onChange={handleChange}
+          placeholder="Password"
+          disabled={create ? false : !editing}
+          className={cx(
+            "border rounded-lg px-3 py-2 text-sm w-full focus:outline-none focus:border-blue-400",
+            (!create && !editing) ? "bg-gray-50 text-gray-500" : "bg-white"
+          )}
         />
+        {(create || editing) && (
+          <button
+            type="button"
+            onClick={() => setShowPassword((p) => !p)}
+            className="absolute inset-y-0 right-3 flex items-center text-gray-400 hover:text-gray-600"
+          >
+            {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
+  const tabContent = (create = false) => ({
+    company:   <TabCompany create={create} />,
+    address:   <TabAddress create={create} />,
+    reminders: <TabReminders />,
+    legal:     <TabLegal create={create} />,
+    security:  <TabSecurity create={create} />,
+  });
+
+  return (
+    <div className="mx-auto max-w-4xl space-y-6">
+      {toast.show && (
+        <DialogBox message={toast.msg} type={toast.type} onClose={() => setToast((t) => ({ ...t, show: false }))} />
       )}
 
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+      {/* Page header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-gray-900">
-            {profileExists ? profile.company_name || "" : "Company Registration"}
+            {profileExists ? profile.company_name || "Company Profile" : "Company Registration"}
           </h2>
-          <p className="text-sm text-gray-500">
-            {profileExists
-              ? "Manage company, address, and login credentials."
-              : "Create your company profile to start invoicing."}
+          <p className="text-sm text-gray-500 mt-0.5">
+            {profileExists ? "Manage your company settings." : "Create your company profile to start invoicing."}
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
-          {/* Master-only quick link (copies /company-profile) */}
+        <div className="flex items-center gap-2 shrink-0">
           {isMaster && (
             <button
               type="button"
               onClick={copyLink}
-              className="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm border-gray-300 hover:bg-gray-50"
-              title="Copy company profile link"
+              className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm border-gray-200 hover:bg-gray-50 text-gray-600"
             >
-              <LinkIcon size={16} />
+              <LinkIcon size={14} />
               Copy Link
-              <Clipboard size={14} className="text-gray-400" />
+              <Clipboard size={12} className="text-gray-400" />
             </button>
           )}
 
@@ -316,10 +448,9 @@ export default function UserProfile() {
             !editing ? (
               <button
                 onClick={() => setEditing(true)}
-                className="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm border-gray-300 hover:bg-gray-50"
+                className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm border-gray-200 hover:bg-gray-50 text-gray-600"
               >
-                <Edit3 size={16} />
-                Edit
+                <Edit3 size={14} /> Edit
               </button>
             ) : (
               <>
@@ -328,14 +459,11 @@ export default function UserProfile() {
                   onClick={resetChanges}
                   disabled={!dirty || saving}
                   className={cx(
-                    "inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm transition",
-                    dirty && !saving
-                      ? "border-gray-300 hover:bg-gray-50"
-                      : "border-gray-200 text-gray-400 cursor-not-allowed"
+                    "inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition",
+                    dirty && !saving ? "border-gray-200 hover:bg-gray-50 text-gray-600" : "border-gray-100 text-gray-300 cursor-not-allowed"
                   )}
                 >
-                  <RefreshCw size={16} />
-                  Reset
+                  <RefreshCw size={14} /> Reset
                 </button>
                 <button
                   type="submit"
@@ -343,12 +471,10 @@ export default function UserProfile() {
                   disabled={!dirty || saving}
                   className={cx(
                     "inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white shadow transition",
-                    dirty && !saving
-                      ? "bg-blue-600 hover:bg-blue-700"
-                      : "bg-blue-300 cursor-not-allowed"
+                    dirty && !saving ? "bg-blue-600 hover:bg-blue-700" : "bg-blue-300 cursor-not-allowed"
                   )}
                 >
-                  {saving && <Loader2 size={16} className="animate-spin" />}
+                  {saving && <Loader2 size={14} className="animate-spin" />}
                   Save Changes
                 </button>
               </>
@@ -363,431 +489,72 @@ export default function UserProfile() {
                 saving ? "bg-blue-300 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"
               )}
             >
-              {saving ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <Plus size={16} />
-              )}
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
               Create Company
             </button>
           ) : null}
         </div>
       </div>
 
-      {/* FORM */}
       {profileExists ? (
-        <form id="profile-form" className="space-y-8" onSubmit={handleUpdate}>
-          {/* 1. Profile Info */}
-          <section className="bg-white shadow-md rounded-2xl border border-gray-100 p-6">
-            <div className="flex items-center gap-6">
-              <div className="relative">
-                {logoPreview ? (
-                  <img
-                    src={logoPreview}
-                    alt="Logo"
-                    className="h-20 w-20 rounded-xl object-cover ring-1 ring-gray-200"
-                  />
-                ) : (
-                  <div className="h-20 w-20 rounded-xl bg-blue-100 ring-1 ring-gray-200 grid place-items-center text-blue-700 font-bold text-lg">
-                    {initials(profile.company_name)}
-                  </div>
-                )}
-                {editing && (
-                  <label className="absolute -bottom-2 -right-2 cursor-pointer inline-flex items-center justify-center h-9 w-9 rounded-full bg-white shadow border hover:bg-gray-50">
-                    <Camera size={16} />
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleFileChange}
-                      className="hidden"
-                    />
-                  </label>
-                )}
-              </div>
-              <div className="grid gap-4 md:grid-cols-2 w-full">
-                <input
-                  type="text"
-                  name="company_name"
-                  value={profile.company_name || ""}
-                  onChange={handleChange}
-                  placeholder="Company Name"
-                  disabled={!editing}
-                  className="border rounded-lg px-3 py-2"
-                />
-                <input
-                  type="email"
-                  name="company_email"
-                  value={profile.company_email || ""}
-                  onChange={handleChange}
-                  placeholder="Company Email"
-                  disabled={!editing}
-                  className="border rounded-lg px-3 py-2"
-                />
-                <input
-                  type="text"
-                  name="company_mobile"
-                  value={profile.company_mobile || ""}
-                  onChange={handleChange}
-                  placeholder="Mobile"
-                  disabled={!editing}
-                  className="border rounded-lg px-3 py-2"
-                />
-                <select
-                  name="status"
-                  value={profile.status || ""}
-                  onChange={handleChange}
-                  disabled={!editing}
-                  className="border rounded-lg px-3 py-2"
+        <form id="profile-form" onSubmit={handleUpdate}>
+          <div className="bg-white shadow-sm rounded-2xl border border-gray-100 overflow-hidden">
+            {/* Tab bar */}
+            <div className="flex border-b border-gray-100 overflow-x-auto">
+              {TABS.map(({ id, label, icon: Icon }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setActiveTab(id)}
+                  className={cx(
+                    "flex items-center gap-2 px-5 py-3.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors",
+                    activeTab === id
+                      ? "border-blue-600 text-blue-600 bg-blue-50/50"
+                      : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                  )}
                 >
-                  {["Active", "Deactivated", "Blacklisted"].map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                  <Icon size={15} />
+                  {label}
+                </button>
+              ))}
             </div>
-          </section>
 
-          {/* 2. Address & Tax */}
-          <section className="bg-white shadow-md rounded-2xl border border-gray-100 p-6">
-            <h3 className="text-lg font-semibold mb-4">Address & Tax Info</h3>
-            <div className="grid gap-4 md:grid-cols-2">
-              <input
-                type="text"
-                name="address1"
-                value={profile.address1 || ""}
-                onChange={handleChange}
-                placeholder="Address Line 1"
-                disabled={!editing}
-                className="border rounded-lg px-3 py-2"
-              />
-              <input
-                type="text"
-                name="address2"
-                value={profile.address2 || ""}
-                onChange={handleChange}
-                placeholder="Address Line 2"
-                disabled={!editing}
-                className="border rounded-lg px-3 py-2"
-              />
-              <input
-                type="text"
-                name="city"
-                value={profile.city || ""}
-                onChange={handleChange}
-                placeholder="City"
-                disabled={!editing}
-                className="border rounded-lg px-3 py-2"
-              />
-              <input
-                type="text"
-                name="state"
-                value={profile.state || ""}
-                onChange={handleChange}
-                placeholder="State"
-                disabled={!editing}
-                className="border rounded-lg px-3 py-2"
-              />
-              <input
-                type="text"
-                name="zip_code"
-                value={profile.zip_code || ""}
-                onChange={handleChange}
-                placeholder="Zip Code"
-                disabled={!editing}
-                className="border rounded-lg px-3 py-2"
-              />
-              <input
-                type="number"
-                step="0.01"
-                name="tax_rate"
-                value={profile.tax_rate ?? ""}
-                onChange={handleChange}
-                placeholder="Tax Rate (%)"
-                disabled={!editing}
-                className="border rounded-lg px-3 py-2"
-              />
+            {/* Tab panel */}
+            <div className="p-6">
+              {tabContent()[activeTab]}
             </div>
-          </section>
-
-          {/* Reminder Settings */}
-          <section className="bg-white shadow-md rounded-2xl border border-gray-100 p-6">
-            <h3 className="text-lg font-semibold mb-1">Overdue Reminders</h3>
-            <p className="text-sm text-gray-500 mb-4">Configure automatic reminder frequency for overdue invoices.</p>
-            <div className="grid gap-4 md:grid-cols-3 items-end">
-              <div className="flex items-center gap-3">
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input type="checkbox" checked={reminderSettings.reminder_enabled}
-                    onChange={(e) => setReminderSettings((s) => ({ ...s, reminder_enabled: e.target.checked }))}
-                    className="sr-only peer" />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:bg-indigo-600 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all" />
-                </label>
-                <span className="text-sm font-medium text-gray-700">
-                  {reminderSettings.reminder_enabled ? "Enabled" : "Disabled"}
-                </span>
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Frequency</label>
-                <select value={reminderSettings.reminder_frequency_days}
-                  onChange={(e) => setReminderSettings((s) => ({ ...s, reminder_frequency_days: Number(e.target.value) }))}
-                  disabled={!reminderSettings.reminder_enabled}
-                  className="w-full border rounded-lg px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-400">
-                  <option value={3}>Every 3 days</option>
-                  <option value={7}>Every 7 days</option>
-                  <option value={14}>Every 14 days</option>
-                  <option value={30}>Every 30 days</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Max reminders</label>
-                <select value={reminderSettings.reminder_max_count}
-                  onChange={(e) => setReminderSettings((s) => ({ ...s, reminder_max_count: Number(e.target.value) }))}
-                  disabled={!reminderSettings.reminder_enabled}
-                  className="w-full border rounded-lg px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-400">
-                  <option value={1}>1 reminder</option>
-                  <option value={2}>2 reminders</option>
-                  <option value={3}>3 reminders</option>
-                  <option value={5}>5 reminders</option>
-                </select>
-              </div>
-            </div>
-            <div className="mt-4 flex items-center gap-3">
-              <button onClick={async () => {
-                setSavingReminder(true);
-                try {
-                  await updateReminderSettings(reminderSettings);
-                  setToast({ show: true, type: "success", msg: "Reminder settings saved." });
-                } catch {
-                  setToast({ show: true, type: "error", msg: "Failed to save reminder settings." });
-                } finally { setSavingReminder(false); }
-              }} disabled={savingReminder}
-                className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition">
-                {savingReminder ? "Saving…" : "Save Reminder Settings"}
-              </button>
-              {reminderSettings.reminder_enabled && (
-                <p className="text-xs text-gray-500">
-                  Reminders will be sent every <strong>{reminderSettings.reminder_frequency_days} days</strong>, up to <strong>{reminderSettings.reminder_max_count}×</strong> per invoice.
-                </p>
-              )}
-            </div>
-          </section>
-
-          {/* 3. Authorization Info */}
-          <section className="bg-white shadow-md rounded-2xl border border-gray-100 p-6">
-            <h3 className="text-lg font-semibold mb-4">Authorization</h3>
-            <div className="grid gap-4 md:grid-cols-2">
-              <input
-                type="text"
-                name="username"
-                value={profile.username || ""}
-                onChange={handleChange}
-                placeholder="Username"
-                disabled={!editing}
-                className="border rounded-lg px-3 py-2"
-              />
-              <input
-                type="email"
-                name="email"
-                value={profile.email || ""}
-                onChange={handleChange}
-                placeholder="Login Email"
-                disabled={!editing}
-                className="border rounded-lg px-3 py-2"
-              />
-              <div className="relative">
-                <input
-                  type={showPassword ? "text" : "password"}
-                  name="password"
-                  value={profile.password || ""}
-                  onChange={handleChange}
-                  placeholder="Password"
-                  disabled={!editing}
-                  className="border rounded-lg px-3 py-2 w-full"
-                />
-                {editing && (
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword((p) => !p)}
-                    className="absolute inset-y-0 right-3 flex items-center text-gray-500"
-                  >
-                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
-                )}
-              </div>
-            </div>
-          </section>
+          </div>
         </form>
       ) : isMaster ? (
-        // CREATE MODE (only master)
-        <form id="create-form" className="space-y-8" onSubmit={handleCreate}>
-          {/* 1. Company Info */}
-          <section className="bg-white shadow-md rounded-2xl border border-gray-100 p-6">
-            <div className="flex items-center gap-6">
-              <div className="relative">
-                {logoPreview ? (
-                  <img
-                    src={logoPreview}
-                    alt="Logo"
-                    className="h-20 w-20 rounded-xl object-cover ring-1 ring-gray-200"
-                  />
-                ) : (
-                  <div className="h-20 w-20 rounded-xl bg-blue-100 ring-1 ring-gray-200 grid place-items-center text-blue-700 font-bold text-lg">
-                    {initials(profile.company_name)}
-                  </div>
-                )}
-                <label className="absolute -bottom-2 -right-2 cursor-pointer inline-flex items-center justify-center h-9 w-9 rounded-full bg-white shadow border hover:bg-gray-50">
-                  <Camera size={16} />
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileChange}
-                    className="hidden"
-                  />
-                </label>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2 w-full">
-                <input
-                  type="text"
-                  name="company_name"
-                  value={profile.company_name || ""}
-                  onChange={handleChange}
-                  placeholder="Company Name"
-                  className="border rounded-lg px-3 py-2"
-                  required
-                />
-                <input
-                  type="email"
-                  name="company_email"
-                  value={profile.company_email || ""}
-                  onChange={handleChange}
-                  placeholder="Company Email"
-                  className="border rounded-lg px-3 py-2"
-                  required
-                />
-                <input
-                  type="text"
-                  name="company_mobile"
-                  value={profile.company_mobile || ""}
-                  onChange={handleChange}
-                  placeholder="Mobile"
-                  className="border rounded-lg px-3 py-2"
-                />
-                <select
-                  name="status"
-                  value={profile.status || "Active"}
-                  onChange={handleChange}
-                  className="border rounded-lg px-3 py-2"
-                >
-                  {["Active", "Deactivated", "Blacklisted"].map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </section>
-
-          {/* 2. Address & Tax */}
-          <section className="bg-white shadow-md rounded-2xl border border-gray-100 p-6">
-            <h3 className="text-lg font-semibold mb-4">Address & Tax Info</h3>
-            <div className="grid gap-4 md:grid-cols-2">
-              <input
-                type="text"
-                name="address1"
-                value={profile.address1 || ""}
-                onChange={handleChange}
-                placeholder="Address Line 1"
-                className="border rounded-lg px-3 py-2"
-              />
-              <input
-                type="text"
-                name="address2"
-                value={profile.address2 || ""}
-                onChange={handleChange}
-                placeholder="Address Line 2"
-                className="border rounded-lg px-3 py-2"
-              />
-              <input
-                type="text"
-                name="city"
-                value={profile.city || ""}
-                onChange={handleChange}
-                placeholder="City"
-                className="border rounded-lg px-3 py-2"
-              />
-              <input
-                type="text"
-                name="state"
-                value={profile.state || ""}
-                onChange={handleChange}
-                placeholder="State"
-                className="border rounded-lg px-3 py-2"
-              />
-              <input
-                type="text"
-                name="zip_code"
-                value={profile.zip_code || ""}
-                onChange={handleChange}
-                placeholder="Zip Code"
-                className="border rounded-lg px-3 py-2"
-              />
-              <input
-                type="number"
-                step="0.01"
-                name="tax_rate"
-                value={profile.tax_rate ?? ""}
-                onChange={handleChange}
-                placeholder="Tax Rate (%)"
-                className="border rounded-lg px-3 py-2"
-              />
-            </div>
-          </section>
-
-          {/* 3. Authorization */}
-          <section className="bg-white shadow-md rounded-2xl border border-gray-100 p-6">
-            <h3 className="text-lg font-semibold mb-4">Authorization</h3>
-            <div className="grid gap-4 md:grid-cols-2">
-              <input
-                type="text"
-                name="username"
-                value={profile.username || ""}
-                onChange={handleChange}
-                placeholder="Username"
-                className="border rounded-lg px-3 py-2"
-              />
-              <input
-                type="email"
-                name="email"
-                value={profile.email || ""}
-                onChange={handleChange}
-                placeholder="Login Email"
-                className="border rounded-lg px-3 py-2"
-              />
-              <div className="relative">
-                <input
-                  type={showPassword ? "text" : "password"}
-                  name="password"
-                  value={profile.password || ""}
-                  onChange={handleChange}
-                  placeholder="Password"
-                  className="border rounded-lg px-3 py-2 w-full"
-                />
+        <form id="create-form" onSubmit={handleCreate}>
+          <div className="bg-white shadow-sm rounded-2xl border border-gray-100 overflow-hidden">
+            {/* Tab bar */}
+            <div className="flex border-b border-gray-100 overflow-x-auto">
+              {TABS.map(({ id, label, icon: Icon }) => (
                 <button
+                  key={id}
                   type="button"
-                  onClick={() => setShowPassword((p) => !p)}
-                  className="absolute inset-y-0 right-3 flex items-center text-gray-500"
+                  onClick={() => setActiveTab(id)}
+                  className={cx(
+                    "flex items-center gap-2 px-5 py-3.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors",
+                    activeTab === id
+                      ? "border-blue-600 text-blue-600 bg-blue-50/50"
+                      : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                  )}
                 >
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  <Icon size={15} />
+                  {label}
                 </button>
-              </div>
+              ))}
             </div>
-          </section>
+
+            <div className="p-6">
+              {tabContent(true)[activeTab]}
+            </div>
+          </div>
         </form>
       ) : (
-        // Non-master & missing profile → read-only notice
-        <div className="p-6 bg-amber-50 border border-amber-200 rounded-2xl text-amber-700">
+        <div className="p-6 bg-amber-50 border border-amber-200 rounded-2xl text-amber-700 text-sm">
           Company profile is not set up yet. Please contact your administrator.
         </div>
       )}

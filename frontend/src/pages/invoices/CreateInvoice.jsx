@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Trash2, AlertTriangle, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
+import { Plus, Trash2, AlertTriangle, ChevronDown, ChevronUp, Loader2, Search, X } from "lucide-react";
 import { listClients } from "../../api/clients";
 import { getCompanyProfile } from "../../api/company";
 import { createInvoice } from "../../api/invoices";
@@ -42,6 +42,9 @@ export default function CreateInvoice() {
 
   // Core invoice fields
   const [selectedClientId, setSelectedClientId] = useState("");
+  const [clientSearch, setClientSearch]         = useState("");
+  const [clientDropOpen, setClientDropOpen]     = useState(false);
+  const clientDropRef                           = useRef(null);
   const [invoiceDate, setInvoiceDate]   = useState(todayIso());
   const [dueDate, setDueDate]           = useState(addDays(todayIso(), 15));
   const [invoiceTitle, setInvoiceTitle] = useState("");
@@ -88,6 +91,7 @@ export default function CreateInvoice() {
         const tr = Number(data?.tax_rate);
         if (Number.isFinite(tr) && tr > 0) setTaxRate(tr);
         if (data?.state) setPlaceOfSupply(data.state);
+        if (data?.terms_and_conditions) setAdditionalInfo(data.terms_and_conditions);
         if (data?.logo_url) {
           try {
             const res = await fetch(data.logo_url);
@@ -110,7 +114,7 @@ export default function CreateInvoice() {
       try {
         let all = [], page = 1;
         while (true) {
-          const res = await listClients({ page, page_size: 100 });
+          const res = await listClients({ page, page_size: 100, status: "Active" });
           all = [...all, ...(res.data ?? [])];
           if (all.length >= (res.meta?.total ?? all.length)) break;
           page++;
@@ -128,6 +132,27 @@ export default function CreateInvoice() {
     () => clients.find((c) => String(c.id) === String(selectedClientId)),
     [clients, selectedClientId]
   );
+
+  const filteredClients = useMemo(() => {
+    if (!clientSearch.trim()) return clients;
+    const q = clientSearch.toLowerCase();
+    return clients.filter(
+      (c) =>
+        c.name?.toLowerCase().includes(q) ||
+        c.company?.toLowerCase().includes(q) ||
+        c.email?.toLowerCase().includes(q)
+    );
+  }, [clients, clientSearch]);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (clientDropRef.current && !clientDropRef.current.contains(e.target)) {
+        setClientDropOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   // Keep due date at least on invoice date when invoice date changes
   useEffect(() => {
@@ -162,7 +187,8 @@ export default function CreateInvoice() {
     (li) => (li.description || "").trim() && Number(li.quantity) > 0 && Number(li.price) > 0
   );
   const hasValidItem = validItems.length > 0;
-  const isValid = Boolean(selectedClientId) && hasValidItem;
+  const isBlacklisted = currentClient?.status === "Blacklisted";
+  const isValid = Boolean(selectedClientId) && hasValidItem && !isBlacklisted;
 
   // ── event handlers ────────────────────────────────────────────────────────
 
@@ -266,35 +292,104 @@ export default function CreateInvoice() {
         {/* Client + Dates */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Client */}
-          <div className="sm:col-span-2">
+          <div className="sm:col-span-2" ref={clientDropRef}>
             <label className="block text-xs font-medium text-gray-500 mb-1">
               Client <span className="text-red-500">*</span>
             </label>
-            <select
-              value={selectedClientId}
-              onChange={(e) => setSelectedClientId(e.target.value)}
-              disabled={clientsLoading}
-              className={errClass(submitted && !selectedClientId)}
-            >
-              <option value="">
-                {clientsLoading ? "Loading clients…" : "Select a client…"}
-              </option>
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}{c.company ? ` — ${c.company}` : ""}
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              {/* Selected pill or search input */}
+              {currentClient && !clientDropOpen ? (
+                <div
+                  className={`w-full border rounded px-3 py-2 text-sm flex items-center justify-between cursor-pointer ${
+                    submitted && !selectedClientId ? "border-red-400" : "border-gray-300"
+                  }`}
+                  onClick={() => {
+                    setClientSearch("");
+                    setClientDropOpen(true);
+                  }}
+                >
+                  <span className="font-medium text-gray-800">
+                    {currentClient.name}
+                    {currentClient.company && (
+                      <span className="text-gray-400 font-normal"> — {currentClient.company}</span>
+                    )}
+                  </span>
+                  <X
+                    size={14}
+                    className="text-gray-400 hover:text-red-500 shrink-0"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedClientId("");
+                      setClientSearch("");
+                    }}
+                  />
+                </div>
+              ) : (
+                <div className={`flex items-center border rounded px-3 py-2 gap-2 ${
+                  submitted && !selectedClientId ? "border-red-400" : "border-gray-300 focus-within:border-blue-400"
+                }`}>
+                  <Search size={14} className="text-gray-400 shrink-0" />
+                  <input
+                    type="text"
+                    autoFocus={clientDropOpen}
+                    value={clientSearch}
+                    disabled={clientsLoading}
+                    onChange={(e) => { setClientSearch(e.target.value); setClientDropOpen(true); }}
+                    onFocus={() => setClientDropOpen(true)}
+                    placeholder={clientsLoading ? "Loading clients…" : "Search by name, company, email…"}
+                    className="flex-1 text-sm outline-none bg-transparent"
+                  />
+                </div>
+              )}
+
+              {/* Dropdown */}
+              {clientDropOpen && (
+                <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
+                  {filteredClients.length === 0 ? (
+                    <p className="px-3 py-3 text-sm text-gray-400">No clients match.</p>
+                  ) : (
+                    filteredClients.map((c) => (
+                      <div
+                        key={c.id}
+                        onClick={() => {
+                          setSelectedClientId(c.id);
+                          setClientSearch("");
+                          setClientDropOpen(false);
+                        }}
+                        className="px-3 py-2.5 text-sm cursor-pointer hover:bg-blue-50 flex flex-col"
+                      >
+                        <span className="font-medium text-gray-800">{c.name}</span>
+                        {(c.company || c.email) && (
+                          <span className="text-xs text-gray-400">
+                            {[c.company, c.email].filter(Boolean).join(" · ")}
+                          </span>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+
             {submitted && !selectedClientId && (
               <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
                 <AlertTriangle size={12} /> Client is required.
               </p>
             )}
-            {/* Client address preview */}
             {currentClient && (
               <p className="text-xs text-gray-400 mt-1 leading-4">
                 {[currentClient.address_line1, currentClient.city, currentClient.state, currentClient.postal_code]
                   .filter(Boolean).join(", ")}
+              </p>
+            )}
+            {currentClient?.status === "Blacklisted" && (
+              <p className="text-xs text-red-600 mt-1 flex items-center gap-1 font-medium">
+                <AlertTriangle size={12} /> This client is blacklisted — invoice creation is blocked.
+              </p>
+            )}
+            {currentClient?.status === "Deactivated" && (
+              <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                <AlertTriangle size={12} /> This client is deactivated — proceed with caution.
               </p>
             )}
           </div>
@@ -550,9 +645,9 @@ export default function CreateInvoice() {
               <textarea
                 value={additionalInfo}
                 onChange={(e) => setAdditionalInfo(e.target.value)}
-                rows={4}
+                rows={8}
                 placeholder="e.g. Installed reinforced door, mounted LED screen…"
-                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-400 resize-none"
+                className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-400 resize-y"
               />
             </div>
           )}

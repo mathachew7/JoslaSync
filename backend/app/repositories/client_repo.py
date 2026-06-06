@@ -10,8 +10,14 @@ class ClientRepository:
     def list(self, db: Session, q: Optional[str], status: Optional[str], page: int, page_size: int):
         return crud_client.list_clients(db, q, status, page, page_size)
 
+    def list_deleted(self, db: Session):
+        return crud_client.list_deleted_clients(db)
+
     def get(self, db: Session, client_id: UUID) -> Optional[Client]:
         return crud_client.get_client(db, client_id)
+
+    def get_including_deleted(self, db: Session, client_id: UUID) -> Optional[Client]:
+        return crud_client.get_client_including_deleted(db, client_id)
 
     def create(self, db: Session, payload: ClientCreate, created_by: str) -> Client:
         return crud_client.create_client(db, payload, created_by)
@@ -19,7 +25,10 @@ class ClientRepository:
     def update(self, db: Session, db_obj: Client, payload: ClientUpdate) -> Client:
         return crud_client.update_client(db, db_obj, payload)
 
-    def delete(self, db: Session, db_obj: Client) -> None:
-        crud_client.delete_client(db, db_obj)
+    def soft_delete(self, db: Session, db_obj: Client, deleted_by: str) -> None:
+        crud_client.soft_delete_client(db, db_obj, deleted_by)
+
+    def restore(self, db: Session, client_id: UUID) -> Optional[Client]:
+        return crud_client.restore_client(db, client_id)
 
 client_repo = ClientRepository()

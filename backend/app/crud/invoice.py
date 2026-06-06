@@ -266,10 +266,9 @@ def update_invoice(db: Session, invoice_id: UUID_T, data: InvoiceCreate) -> Opti
     if not inv:
         raise ValueError("Invoice not found")
 
-    # Only DRAFT may be edited
-    if (inv.status or "").upper() != "DRAFT":
-        logger.warning(f"🚫 Update blocked id={invoice_id} status={inv.status}")
-        raise ValueError("Only DRAFT invoices can be edited. Void and clone to amend an issued invoice.")
+    # VOID invoices can never be edited; INVOICE requires edit_note (enforced at route level)
+    if (inv.status or "").upper() == "VOID":
+        raise ValueError("VOID invoices cannot be edited.")
 
     # Validate incoming payload
     validate_invoice_create(data)
@@ -328,6 +327,12 @@ def update_invoice(db: Session, invoice_id: UUID_T, data: InvoiceCreate) -> Opti
 
     inv.frozen_payload_json = frozen
     inv.template_version = inv.template_version or "v1"
+
+    # Stamp amendment audit trail when editing a finalized invoice
+    if (inv.status or "").upper() == "INVOICE" and data.edit_note:
+        inv.edit_note = data.edit_note
+        from datetime import datetime as _dt
+        inv.last_edited_at = _dt.utcnow().isoformat()
 
     # --------- REPLACE ITEMS SAFELY ----------
     # 1) Clear the relationship (lets SQLAlchemy issue DELETEs)
@@ -608,8 +613,15 @@ def record_payment(db: Session, invoice_id: UUID_T, amount: "Decimal") -> Option
         raise ValueError("Invoice not found")
     if (inv.status or "").upper() != "INVOICE":
         raise ValueError("Payments can only be recorded against issued invoices.")
-    new_paid = min(Decimal(str(inv.amount_paid or 0)) + Decimal(str(amount)), Decimal(str(inv.total or 0)))
-    inv.amount_paid = new_paid
+    already_paid = Decimal(str(inv.amount_paid or 0))
+    total        = Decimal(str(inv.total or 0))
+    remaining    = total - already_paid
+    if Decimal(str(amount)) > remaining:
+        raise ValueError(
+            f"Payment of ${amount} exceeds the remaining balance of ${remaining:.2f}. "
+            f"Use 'Correct' to fix a payment mistake."
+        )
+    inv.amount_paid = already_paid + Decimal(str(amount))
     db.commit()
     db.refresh(inv)
     logger.info(f"💰 Payment recorded id={invoice_id} amount_paid={inv.amount_paid}")

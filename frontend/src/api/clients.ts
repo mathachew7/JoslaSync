@@ -52,3 +52,13 @@ export async function updateClient(client_id: string, payload: Partial<Client>):
 export async function deleteClient(client_id: string): Promise<void> {
   await API.delete(`/api/clients/${client_id}`);
 }
+
+export async function listDeletedClients(): Promise<Client[]> {
+  const { data } = await API.get("/api/clients/deleted");
+  return data;
+}
+
+export async function restoreClient(client_id: string): Promise<Client> {
+  const { data } = await API.post(`/api/clients/${client_id}/restore`);
+  return data;
+}

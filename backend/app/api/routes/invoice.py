@@ -17,6 +17,7 @@ from app.schemas.invoice import (
     InvoiceListResponse,
     PaginationMeta,
     PaymentRequest,
+    PaymentAdjustRequest,
     SendInvoiceRequest,
 )
 from app.crud import invoice as invoice_crud
@@ -168,7 +169,7 @@ def create_invoice(
     return InvoiceRead.model_validate(obj)
 
 
-# --- Guarded edits: allow VOID or DRAFT invoices to be edited ---
+# --- Edits: DRAFT freely; INVOICE requires edit_note (owner override) ---
 @router.put("/{invoice_id}", response_model=InvoiceRead)
 def update_invoice(
     invoice_id: UUID,
@@ -183,11 +184,17 @@ def update_invoice(
     if not current:
         raise HTTPException(status_code=404, detail="Invoice not found")
 
-    if (current.status or "").upper() != "DRAFT":
-        logger.info(f"🚫 PUT /invoices/{invoice_id} | status={current.status} not editable")
+    current_status = (current.status or "").upper()
+    if current_status == "VOID":
         raise HTTPException(
             status_code=status.HTTP_405_METHOD_NOT_ALLOWED,
-            detail="Only DRAFT invoices can be edited. Void and clone to amend an issued invoice.",
+            detail="VOID invoices cannot be edited. Clone to create a new one.",
+        )
+
+    if current_status == "INVOICE" and not (payload.edit_note or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="edit_note is required when amending a finalized invoice.",
         )
 
     try:
@@ -196,7 +203,7 @@ def update_invoice(
         logger.info(f"❌ /invoices/{invoice_id} update | {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
-    logger.info(f"✅ /invoices/{invoice_id} updated")
+    logger.info(f"✅ /invoices/{invoice_id} updated (status={current_status} note={payload.edit_note!r})")
     return InvoiceRead.model_validate(obj)
 
 
@@ -275,6 +282,36 @@ def record_payment(
         raise HTTPException(status_code=400, detail=str(e))
     logger.info(f"✅ /invoices/{invoice_id}/pay | amount_paid={obj.amount_paid}")
     return InvoiceRead.model_validate(obj)
+
+
+# --- Correct / adjust payment (owner override) ---
+@router.put("/{invoice_id}/payment", response_model=InvoiceRead)
+def adjust_payment(
+    invoice_id: UUID,
+    payload: PaymentAdjustRequest,
+    db: Session = Depends(get_company_db),
+    user: dict = Depends(get_current_user),
+):
+    uname = user.get("email") or user.get("sub") or "unknown"
+    logger.info(f"➡️ PUT /invoices/{invoice_id}/payment | user={uname} set_amount={payload.amount_paid}")
+    inv = invoice_crud.get_invoice(db, invoice_id)
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    from decimal import Decimal
+    if Decimal(str(payload.amount_paid)) > Decimal(str(inv.total or 0)):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Corrected amount ${payload.amount_paid} cannot exceed invoice total ${inv.total:.2f}."
+        )
+    inv.amount_paid = payload.amount_paid
+    if payload.note:
+        inv.edit_note = (inv.edit_note or "") + f"\n[Payment correction] {payload.note}".strip()
+    from datetime import datetime
+    inv.last_edited_at = datetime.utcnow().isoformat()
+    db.commit()
+    db.refresh(inv)
+    logger.info(f"✅ /invoices/{invoice_id}/payment adjusted | amount_paid={inv.amount_paid}")
+    return InvoiceRead.model_validate(inv)
 
 
 # --- Send invoice by email ---

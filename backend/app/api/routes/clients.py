@@ -1,12 +1,13 @@
-from fastapi import APIRouter, Depends, Query, status
-from typing import Optional
+from fastapi import APIRouter, Depends, Query, status, HTTPException
+from typing import Optional, List
 from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.logger import logger
 from app.schemas.client import ClientCreate, ClientUpdate, ClientOut, ClientListOut, PageMeta
 from app.services.client_service import client_service
-from app.db.deps import get_company_db, get_current_user  # ✅ use your deps
+from app.db.deps import get_company_db, get_current_user
+from app.core.config import settings
 
 router = APIRouter(prefix="/clients", tags=["clients"])
 
@@ -76,6 +77,39 @@ def delete_client(
 ):
     uname = user.get("email") or user.get("sub") or "unknown"
     logger.info(f"➡️ DELETE /clients/{client_id} | user={uname}")
-    client_service.delete(db, client_id)
-    logger.info(f"🗑️ /clients/{client_id} deleted")
+    client_service.delete(db, client_id, deleted_by=uname)
+    logger.info(f"🗑️ /clients/{client_id} soft-deleted by {uname}")
     return None
+
+
+# ── Master-only: view deleted clients ────────────────────────────────────────
+
+def _require_master(user: dict):
+    db_name = user.get("db_name", "")
+    if db_name != settings.MASTER_DB_NAME:
+        raise HTTPException(status_code=403, detail="Master access required.")
+
+
+@router.get("/deleted", response_model=List[ClientOut])
+def list_deleted_clients(
+    db: Session = Depends(get_company_db),
+    user: dict = Depends(get_current_user),
+):
+    _require_master(user)
+    rows = client_service.list_deleted(db)
+    logger.info(f"✅ /clients/deleted | master listed {len(rows)} deleted clients")
+    return [ClientOut.model_validate(r) for r in rows]
+
+
+@router.post("/{client_id}/restore", response_model=ClientOut)
+def restore_client(
+    client_id: UUID,
+    db: Session = Depends(get_company_db),
+    user: dict = Depends(get_current_user),
+):
+    _require_master(user)
+    uname = user.get("email") or user.get("sub") or "master"
+    logger.info(f"➡️ POST /clients/{client_id}/restore | user={uname}")
+    obj = client_service.restore(db, client_id)
+    logger.info(f"✅ /clients/{client_id} restored")
+    return ClientOut.model_validate(obj)

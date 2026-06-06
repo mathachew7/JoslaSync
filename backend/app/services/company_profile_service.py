@@ -14,10 +14,25 @@ from app.repositories.company_profile_repo import CompanyProfileRepository
 from app.utils.file_utils import save_logo_file
 from app.utils.db_utils import create_company_database
 from app.utils.security import hash_password
+from app.core.config import settings as app_settings
 
 # Ensure tenant tables are registered (module import to populate metadata)
 from app.db.models.tenant import company_settings as _company_settings  # noqa: F401
 from app.services.company_settings_service import get_or_create_settings
+
+
+def _get_master_terms() -> Optional[str]:
+    """Read T&C from the master company's tenant profile so new companies inherit it."""
+    try:
+        MasterSession = get_tenant_session(app_settings.MASTER_DB_NAME)
+        session = MasterSession()
+        try:
+            row = session.query(TenantCompanyProfile).first()
+            return row.terms_and_conditions if row else None
+        finally:
+            session.close()
+    except Exception:
+        return None
 
 
 class CompanyProfileService:
@@ -90,7 +105,8 @@ class CompanyProfileService:
             # Redundant safety: ensure metadata is bound (ok if tables already exist)
             BaseTenant.metadata.create_all(bind=tenant_db.get_bind())
 
-            # 7) Insert tenant profile row
+            # 7) Insert tenant profile row (seed T&C from master company's profile)
+            master_terms = _get_master_terms()
             tenant_profile = self.repo.create_tenant_profile(
                 tenant_db,
                 TenantCompanyProfile(
@@ -107,6 +123,7 @@ class CompanyProfileService:
                     tax_rate=tax_rate,
                     status=status,
                     db_name=db_name,
+                    terms_and_conditions=master_terms,
                 ),
             )
 
@@ -139,6 +156,7 @@ class CompanyProfileService:
         zip_code: Optional[str] = None,
         tax_rate: Optional[float] = None,
         status: Optional[str] = None,
+        terms_and_conditions: Optional[str] = None,
     ) -> CompanyProfileOut:
         existing = self.repo.get_tenant_profile(tenant_db)
         if not existing:
@@ -174,6 +192,7 @@ class CompanyProfileService:
             **({"zip_code": zip_code} if zip_code is not None else {}),
             **({"tax_rate": tax_rate} if tax_rate is not None else {}),
             **({"status": status} if status is not None else {}),
+            **({"terms_and_conditions": terms_and_conditions} if terms_and_conditions is not None else {}),
         }
 
         updated = self.repo.update_tenant_profile(tenant_db, existing, fields)

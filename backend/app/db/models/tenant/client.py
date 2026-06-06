@@ -58,3 +58,7 @@ class Client(BaseTenant, TimestampMixin):  # 👈 inherit BaseTenant directly
 
     status = Column(String(20), nullable=False, server_default="Active")
     created_by = Column(String(120), nullable=False)
+
+    # Soft delete
+    deleted_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    deleted_by = Column(String(120), nullable=True)

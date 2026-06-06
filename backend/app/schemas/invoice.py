@@ -58,6 +58,9 @@ class InvoiceCreate(BaseModel):
     created_by_user_id: Optional[UUID] = None
     created_by_name: Optional[str] = None
 
+    # amendment audit — required when editing a finalized INVOICE
+    edit_note: Optional[str] = None
+
     @field_validator("discount_type")
     @classmethod
     def _require_discount_type_if_enabled(cls, v, info):
@@ -106,6 +109,10 @@ class InvoiceRead(BaseModel):
     # text blocks
     footer_message: Optional[str]
     additional_information_raw: Optional[str]
+
+    # amendment audit
+    edit_note: Optional[str] = None
+    last_edited_at: Optional[str] = None
 
     # timestamps
     created_at: datetime
@@ -161,6 +168,10 @@ class InvoiceListResponse(BaseModel):
 
 class PaymentRequest(BaseModel):
     amount: condecimal(max_digits=12, decimal_places=2, gt=Decimal("0"))
+    note: Optional[str] = None
+
+class PaymentAdjustRequest(BaseModel):
+    amount_paid: condecimal(max_digits=12, decimal_places=2, ge=Decimal("0"))
     note: Optional[str] = None
 
 class SendInvoiceRequest(BaseModel):

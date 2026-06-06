@@ -97,6 +97,7 @@ def update_company_profile(
     zip_code: Optional[str] = Form(None),
     tax_rate: Optional[float] = Form(None),
     status: Optional[str] = Form(None),
+    terms_and_conditions: Optional[str] = Form(None),
     tenant_db: Session = Depends(get_company_db),
 ):
     """
@@ -116,6 +117,7 @@ def update_company_profile(
         zip_code=zip_code,
         tax_rate=tax_rate,
         status=status,
+        terms_and_conditions=terms_and_conditions,
     )
 
 
