@@ -15,8 +15,6 @@ import {
   Edit3,
   Eye,
   EyeOff,
-  Link as LinkIcon,
-  Clipboard,
   Plus,
   Building2,
   MapPin,
@@ -38,8 +36,7 @@ export default function UserProfile() {
   const { user, ready } = useAuth();
   const isMaster =
     !!user &&
-    (user?.roles?.includes?.("MASTER") ||
-      user?.email === import.meta.env.VITE_MASTER_EMAIL);
+    (user?.role === "master" || user?.email === import.meta.env.VITE_MASTER_EMAIL);
 
   const [activeTab, setActiveTab] = useState("company");
 
@@ -161,7 +158,7 @@ export default function UserProfile() {
       delete payload.db_name;
       delete payload.updated_at;
       if (!payload.password) delete payload.password;
-      const updated = await updateCompanyProfile(payload.logoFile ? buildFormData(payload) : payload);
+      const updated = await updateCompanyProfile(buildFormData(payload));
       setInitial(updated);
       setProfile({ ...updated, username: updated.username || "", email: updated.company_email || "", password: "" });
       setLogoPreview(updated.logo_url || null);
@@ -176,10 +173,6 @@ export default function UserProfile() {
 
   const handleCreate = async (e) => {
     e.preventDefault();
-    if (!isMaster) {
-      setToast({ show: true, type: "error", msg: "Only master can create the company profile." });
-      return;
-    }
     setSaving(true);
     try {
       const fd = buildFormData(profile);
@@ -193,16 +186,6 @@ export default function UserProfile() {
       setToast({ show: true, type: "error", msg: "Failed to create company profile" });
     } finally {
       setSaving(false);
-    }
-  };
-
-  const copyLink = async () => {
-    const url = `${window.location.origin}/company-profile`;
-    try {
-      await navigator.clipboard.writeText(url);
-      setToast({ show: true, type: "success", msg: "Link copied: /company-profile" });
-    } catch {
-      setToast({ show: true, type: "error", msg: "Failed to copy link" });
     }
   };
 
@@ -232,7 +215,7 @@ export default function UserProfile() {
     />
   );
 
-  const TabCompany = ({ create = false }) => (
+  const tabCompany = (create = false) => (
     <div className="space-y-6">
       <div className="flex items-center gap-6">
         <div className="relative shrink-0">
@@ -273,7 +256,7 @@ export default function UserProfile() {
     </div>
   );
 
-  const TabAddress = ({ create = false }) => (
+  const tabAddress = (create = false) => (
     <div className="grid gap-4 md:grid-cols-2">
       {field({ type: "text",   name: "address1",  value: profile.address1  || "", onChange: handleChange, placeholder: "Address Line 1", ...(create ? { disabled: false } : {}) })}
       {field({ type: "text",   name: "address2",  value: profile.address2  || "", onChange: handleChange, placeholder: "Address Line 2", ...(create ? { disabled: false } : {}) })}
@@ -284,7 +267,7 @@ export default function UserProfile() {
     </div>
   );
 
-  const TabReminders = () => (
+  const tabReminders = () => (
     <div className="space-y-5">
       <p className="text-sm text-gray-500">Configure automatic reminder frequency for overdue invoices.</p>
       <div className="grid gap-4 md:grid-cols-3 items-end">
@@ -358,7 +341,7 @@ export default function UserProfile() {
     </div>
   );
 
-  const TabLegal = ({ create = false }) => (
+  const tabLegal = (create = false) => (
     <div className="space-y-3">
       <p className="text-sm text-gray-500">This will be auto-filled on every invoice you generate. You can still edit it per invoice.</p>
       <textarea
@@ -376,7 +359,7 @@ export default function UserProfile() {
     </div>
   );
 
-  const TabSecurity = ({ create = false }) => (
+  const tabSecurity = (create = false) => (
     <div className="grid gap-4 md:grid-cols-2">
       {field({ type: "text",  name: "username", value: profile.username || "", onChange: handleChange, placeholder: "Username",    ...(create ? { disabled: false } : {}) })}
       {field({ type: "email", name: "email",    value: profile.email    || "", onChange: handleChange, placeholder: "Login Email", ...(create ? { disabled: false } : {}) })}
@@ -407,11 +390,11 @@ export default function UserProfile() {
   );
 
   const tabContent = (create = false) => ({
-    company:   <TabCompany create={create} />,
-    address:   <TabAddress create={create} />,
-    reminders: <TabReminders />,
-    legal:     <TabLegal create={create} />,
-    security:  <TabSecurity create={create} />,
+    company:   tabCompany(create),
+    address:   tabAddress(create),
+    reminders: tabReminders(),
+    legal:     tabLegal(create),
+    security:  tabSecurity(create),
   });
 
   return (
@@ -424,26 +407,14 @@ export default function UserProfile() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-gray-900">
-            {profileExists ? profile.company_name || "Company Profile" : "Company Registration"}
+            {profileExists ? profile.company_name || "Company Profile" : "Company Setup"}
           </h2>
           <p className="text-sm text-gray-500 mt-0.5">
-            {profileExists ? "Manage your company settings." : "Create your company profile to start invoicing."}
+            {profileExists ? "Manage your company settings." : "Complete your company profile to start invoicing."}
           </p>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          {isMaster && (
-            <button
-              type="button"
-              onClick={copyLink}
-              className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm border-gray-200 hover:bg-gray-50 text-gray-600"
-            >
-              <LinkIcon size={14} />
-              Copy Link
-              <Clipboard size={12} className="text-gray-400" />
-            </button>
-          )}
-
           {profileExists ? (
             !editing ? (
               <button
@@ -479,20 +450,20 @@ export default function UserProfile() {
                 </button>
               </>
             )
-          ) : isMaster ? (
+          ) : (
             <button
               type="submit"
               form="create-form"
-              disabled={saving}
+              disabled={!dirty || saving}
               className={cx(
                 "inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white shadow transition",
-                saving ? "bg-blue-300 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"
+                (!dirty || saving) ? "bg-blue-300 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"
               )}
             >
               {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-              Create Company
+              {isMaster ? "Create Company" : "Save Setup"}
             </button>
-          ) : null}
+          )}
         </div>
       </div>
 
@@ -525,10 +496,9 @@ export default function UserProfile() {
             </div>
           </div>
         </form>
-      ) : isMaster ? (
-        <form id="create-form" onSubmit={handleCreate}>
+      ) : (
+        <form id="create-form" onSubmit={isMaster ? handleCreate : handleUpdate}>
           <div className="bg-white shadow-sm rounded-2xl border border-gray-100 overflow-hidden">
-            {/* Tab bar */}
             <div className="flex border-b border-gray-100 overflow-x-auto">
               {TABS.map(({ id, label, icon: Icon }) => (
                 <button
@@ -553,10 +523,6 @@ export default function UserProfile() {
             </div>
           </div>
         </form>
-      ) : (
-        <div className="p-6 bg-amber-50 border border-amber-200 rounded-2xl text-amber-700 text-sm">
-          Company profile is not set up yet. Please contact your administrator.
-        </div>
       )}
     </div>
   );

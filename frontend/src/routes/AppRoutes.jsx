@@ -1,8 +1,11 @@
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 
 import Register from "../pages/Register";
 import Login from "../pages/Login";
+import SetPassword from "../pages/SetPassword";
+import Setup from "../pages/onboarding/Setup";
 import DashboardLayout from "../layouts/DashboardLayout";
+import AdminLayout from "../layouts/AdminLayout";
 
 import Dashboard from "../pages/Dashboard";
 import Clients from "../pages/clients/Clients";
@@ -13,19 +16,35 @@ import Reports from "../pages/Reports";
 import AddClient from "../pages/clients/AddClient";
 import EditClient from "../pages/clients/EditClient";
 import ClientDetail from "../pages/clients/ClientDetail";
-import CompanyProfile from "../pages/companyProfile/CompanyProfile";
 import UserProfile from "../pages/companyProfile/UserProfile";
+
+import AdminDashboard from "../pages/admin/AdminDashboard";
+import Tenants from "../pages/admin/Tenants";
+import CreateTenant from "../pages/admin/CreateTenant";
+import TenantDetail from "../pages/admin/TenantDetail";
 
 import { useAuth } from "../context/AuthContext";
 
-function RequireMaster({ children }) {
+function RequireSuperAdmin({ children }) {
   const { user, ready } = useAuth();
-  if (!ready) return null;
-  return user?.role === "master" ? children : <Navigate to="/dashboard" replace />;
+  if (!ready || !user) return null;
+  return user.role === "super_admin"
+    ? children
+    : <Navigate to="/dashboard" replace />;
+}
+
+function RequireTenantUser({ children }) {
+  const { user, ready } = useAuth();
+  if (!ready || !user) return null;
+  if (user.role === "super_admin") {
+    return <Navigate to="/admin" replace />;
+  }
+  return children;
 }
 
 export default function AppRoutes() {
-  const { ready, token } = useAuth();
+  const { ready, token, user } = useAuth();
+  const location = useLocation();
 
   // Wait for AuthContext to finish bootstrapping (checks localStorage + /auth/me)
   if (!ready) {
@@ -37,6 +56,11 @@ export default function AppRoutes() {
   }
 
   const isLoggedIn = !!token;
+
+  // If logged in and must change password, block all routes except /set-password
+  if (isLoggedIn && user?.must_change_password && location.pathname !== "/set-password") {
+    return <Navigate to="/set-password" replace />;
+  }
 
   return (
     <Routes>
@@ -54,9 +78,26 @@ export default function AppRoutes() {
         element={isLoggedIn ? <Navigate to="/dashboard" replace /> : <Register />}
       />
 
-      {/* Protected routes */}
+      {isLoggedIn && (
+        <Route path="/set-password" element={<SetPassword />} />
+      )}
+      {isLoggedIn && (
+        <Route path="/setup" element={<Setup />} />
+      )}
+
+      {/* Admin portal — super_admin / master only */}
+      {isLoggedIn && (
+        <Route element={<AdminLayout />}>
+          <Route path="/admin" element={<RequireSuperAdmin><AdminDashboard /></RequireSuperAdmin>} />
+          <Route path="/admin/tenants" element={<RequireSuperAdmin><Tenants /></RequireSuperAdmin>} />
+          <Route path="/admin/tenants/new" element={<RequireSuperAdmin><CreateTenant /></RequireSuperAdmin>} />
+          <Route path="/admin/tenants/:id" element={<RequireSuperAdmin><TenantDetail /></RequireSuperAdmin>} />
+        </Route>
+      )}
+
+      {/* Protected routes — tenant users only */}
       {isLoggedIn ? (
-        <Route element={<DashboardLayout />}>
+        <Route element={<RequireTenantUser><DashboardLayout /></RequireTenantUser>}>
           <Route path="/dashboard" element={<Dashboard />} />
 
           {/* Clients */}
@@ -73,18 +114,7 @@ export default function AppRoutes() {
           {/* Reports */}
           <Route path="/reports" element={<Reports />} />
 
-          {/* User profile & settings (all roles) */}
           <Route path="/user-profile" element={<UserProfile />} />
-
-          {/* Company profile — master only */}
-          <Route
-            path="/company-profile"
-            element={
-              <RequireMaster>
-                <CompanyProfile />
-              </RequireMaster>
-            }
-          />
 
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Route>

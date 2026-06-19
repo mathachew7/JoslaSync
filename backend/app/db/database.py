@@ -77,6 +77,25 @@ def create_tenant_database_if_missing(db_name: str):
             # likely already exists or insufficient privs — caller may log
             pass
 
+def _migrate_tenant_columns(engine) -> None:
+    """
+    Idempotent column migrations for tenant DBs.
+    create_all() only creates missing TABLES, never adds new COLUMNS to existing ones.
+    Add every new column here when the model schema changes.
+    """
+    migrations = [
+        "ALTER TABLE company_profile ADD COLUMN IF NOT EXISTS full_name VARCHAR",
+        "ALTER TABLE company_profile ADD COLUMN IF NOT EXISTS terms_and_conditions TEXT",
+    ]
+    with engine.connect() as conn:
+        for sql in migrations:
+            try:
+                conn.execute(text(sql))
+            except Exception as e:
+                logger.warning(f"⚠️ Column migration skipped: {e}")
+        conn.commit()
+
+
 def ensure_tenant_tables(db_name: str):
     """
     Ensure all tenant tables exist in the given tenant DB.
@@ -89,6 +108,7 @@ def ensure_tenant_tables(db_name: str):
 
     engine = get_engine_for_db(db_name)
     BaseTenant.metadata.create_all(bind=engine)
+    _migrate_tenant_columns(engine)
     logger.info(f"✅ Ensured tenant tables for DB '{db_name}'")
 
 # =======================

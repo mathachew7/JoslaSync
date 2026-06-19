@@ -11,7 +11,8 @@ class User(Base):
     email = Column(String(254), unique=True, nullable=False)
     hashed_password = Column(String(255), nullable=False)
     is_active = Column(Boolean, default=True)
-    role = Column(String(50), nullable=False, default="admin")
+    role = Column(String(50), nullable=False, default="tenant_admin")
+    must_change_password = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     company_id = Column(Integer, ForeignKey("companies.id"), nullable=True)

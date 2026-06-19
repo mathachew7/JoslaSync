@@ -10,6 +10,7 @@ const ACCESS_KEY = "access_token";
 const API = axios.create({
   baseURL: BASE_URL,
   withCredentials: true, // required for HttpOnly refresh cookie
+  timeout: 8000,
 });
 
 // Attach bearer token on every request

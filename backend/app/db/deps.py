@@ -4,6 +4,7 @@ from typing import Dict, Generator, Optional
 import jwt
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.config import settings
 from app.core.logger import logger
@@ -47,6 +48,16 @@ def get_current_user(claims: Dict = Depends(get_token_claims)) -> Dict:
     }
 
 
+def require_super_admin(user: Dict = Depends(get_current_user)) -> Dict:
+    role = user.get("role")
+    if role not in ("super_admin", "master"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required.",
+        )
+    return user
+
+
 def get_company_db(claims: Dict = Depends(get_token_claims)) -> Generator[Session, None, None]:
     """
     Open a tenant-scoped DB session using db_name from JWT claims.
@@ -68,6 +79,8 @@ def get_company_db(claims: Dict = Depends(get_token_claims)) -> Generator[Sessio
     db = SessionLocal()
     try:
         yield db
+    except (HTTPException, StarletteHTTPException):
+        raise  # let FastAPI handle 4xx responses from route handlers normally
     except Exception:
         logger.exception(f"❌ Tenant DB error [{db_name}]")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="DB Connection failed")

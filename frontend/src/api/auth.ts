@@ -17,7 +17,7 @@ export type LoginResponse = {
 
 export type MeResponse = {
   user: { id: number | string; username: string; email: string; role: string };
-  company: { id?: string | number | null; slug?: string | null; db_name?: string | null };
+  company: { id?: string | number | null; slug?: string | null; db_name?: string | null; company_name?: string | null };
 };
 
 export async function login(username: string, password: string): Promise<LoginResponse> {
@@ -32,5 +32,10 @@ export async function refresh(): Promise<LoginResponse> {
 
 export async function me(): Promise<MeResponse> {
   const { data } = await API.get<MeResponse>("/api/auth/me");
+  return data;
+}
+
+export async function updateMe(payload: { username?: string; email?: string }): Promise<MeResponse["user"]> {
+  const { data } = await API.put<MeResponse["user"]>("/api/auth/me", payload);
   return data;
 }

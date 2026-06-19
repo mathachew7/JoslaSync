@@ -144,6 +144,7 @@ class CompanyProfileService:
     def update(
         self,
         tenant_db: Session,
+        db_name: Optional[str] = None,
         company_name: Optional[str] = None,
         company_email: Optional[str] = None,
         company_mobile: Optional[str] = None,
@@ -160,8 +161,29 @@ class CompanyProfileService:
     ) -> CompanyProfileOut:
         existing = self.repo.get_tenant_profile(tenant_db)
         if not existing:
-            logger.warning("No profile found to update.")
-            raise HTTPException(status_code=404, detail="No profile exists. Use register endpoint.")
+            # Upsert: tenant was provisioned by admin without a profile row — create it now.
+            if not db_name:
+                raise HTTPException(status_code=404, detail="No company profile exists and tenant identity is unavailable.")
+            logo_url = save_logo_file(logo_file) if logo_file is not None else None
+            new_profile = TenantCompanyProfile(
+                db_name=db_name,
+                company_name=company_name or "",
+                company_email=company_email or "",
+                company_mobile=company_mobile or "",
+                full_name=full_name or "",
+                logo_url=logo_url,
+                address1=address1 or "",
+                address2=address2 or "",
+                city=city or "",
+                state=state or "",
+                zip_code=zip_code or "",
+                tax_rate=tax_rate or 0.0,
+                status=status or "active",
+                terms_and_conditions=terms_and_conditions,
+            )
+            created = self.repo.create_tenant_profile(tenant_db, new_profile)
+            logger.info(f"🆕 Company profile created via upsert for tenant: {db_name}")
+            return CompanyProfileOut.model_validate(created, from_attributes=True)
 
         # Only validate what changes; logo may be omitted
         if any(v is not None for v in [company_email, company_mobile, city, full_name, zip_code, tax_rate, logo_file]):

@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
 from app.core.logger import logger
-from app.schemas.auth import UserCreate, UserRead, LoginInput, LoginResponse
+from app.schemas.auth import UserCreate, UserRead, LoginInput, LoginResponse, SetPasswordInput
 from app.repositories.auth_repo import AuthRepository
 from app.repositories.company_profile_repo import CompanyProfileRepository
 from app.validators.auth_validator import (
@@ -14,6 +14,7 @@ from app.validators.auth_validator import (
 )
 from app.utils.security import (
     hash_password,
+    verify_password,
     build_token_payload,
     create_access_token,
     create_refresh_token,
@@ -96,8 +97,8 @@ class AuthService:
             )
             return resp, refresh
 
-        # DB user
-        user = self.auth_repo.get_user_by_username(db, username)
+        # DB user — resolve by email or username
+        user = self.auth_repo.get_user_by_login(db, username)
         if not user:
             logger.warning(f"❌ Invalid login attempt — user not found: {username}")
         validate_credentials(user, password)
@@ -133,8 +134,21 @@ class AuthService:
             access_token=access,
             refresh_token=refresh,
             user=UserRead.model_validate(user),
+            must_change_password=bool(getattr(user, "must_change_password", False)),
         )
         return resp, refresh
+
+    # -------------------------
+    # Set password (first-time / forced reset)
+    # -------------------------
+    def set_password(self, user_id: int, payload: SetPasswordInput, db: Session) -> UserRead:
+        user = self.auth_repo.get_user_by_id(db, user_id)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        new_hash = hash_password(payload.new_password)
+        updated = self.auth_repo.update_password(db, user, new_hash)
+        logger.info(f"🔑 Password changed for user: {updated.username}")
+        return UserRead.model_validate(updated)
 
     # -------------------------
     # Refresh

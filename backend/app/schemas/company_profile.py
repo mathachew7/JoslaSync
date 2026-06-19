@@ -1,31 +1,36 @@
 # app/schemas/company_profile.py
-from typing import Optional, Literal
-from pydantic import BaseModel, EmailStr, ConfigDict
+from typing import Optional
+from pydantic import BaseModel, ConfigDict
 
-# Match DB values (lowercase)
-Status = Literal["active", "deactivated", "blacklisted"]
 
-class CompanyProfileBase(BaseModel):
+class CompanyProfileOut(BaseModel):
+    """
+    Response schema. All fields mirror DB nullability — only the three NOT NULL
+    columns are required; everything else is Optional so model_validate never
+    crashes on a partially-filled or freshly-migrated row.
+    """
+    id: int
     company_name: str
-    company_email: EmailStr
+    company_email: str
     company_mobile: str
-    full_name: str
-    address1: str
-    address2: str
-    city: str
-    state: str
-    zip_code: str
-    tax_rate: float
+    db_name: Optional[str] = None
+    full_name: Optional[str] = None
+    address1: Optional[str] = None
+    address2: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip_code: Optional[str] = None
+    tax_rate: Optional[float] = None
     logo_url: Optional[str] = None
-    status: Optional[Status] = "active"
+    status: Optional[str] = "active"
     terms_and_conditions: Optional[str] = None
 
-class CompanyProfileCreate(CompanyProfileBase):
-    pass
+    model_config = ConfigDict(from_attributes=True)
+
 
 class CompanyProfileUpdate(BaseModel):
     company_name: Optional[str] = None
-    company_email: Optional[EmailStr] = None
+    company_email: Optional[str] = None
     company_mobile: Optional[str] = None
     full_name: Optional[str] = None
     address1: Optional[str] = None
@@ -34,11 +39,6 @@ class CompanyProfileUpdate(BaseModel):
     state: Optional[str] = None
     zip_code: Optional[str] = None
     tax_rate: Optional[float] = None
-    status: Optional[Status] = None
+    status: Optional[str] = None
     logo_url: Optional[str] = None
     terms_and_conditions: Optional[str] = None
-
-class CompanyProfileOut(CompanyProfileBase):
-    id: int
-    db_name: Optional[str] = None
-    model_config = ConfigDict(from_attributes=True)

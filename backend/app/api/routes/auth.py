@@ -6,12 +6,11 @@ from app.core.logger import logger
 from app.core.config import settings
 from app.db.database import get_db
 from app.db.deps import get_current_user  # <-- make sure this returns claims from JWT
-from app.schemas.auth import UserCreate, UserRead, LoginInput, LoginResponse
+from app.schemas.auth import UserCreate, UserRead, LoginInput, LoginResponse, SetPasswordInput, UserUpdate
 from app.services.auth_service import AuthService
 from app.repositories.auth_repo import AuthRepository
 from app.repositories.company_profile_repo import CompanyProfileRepository
 from app.utils.response_utils import set_refresh_cookie
-from app.utils.security import is_master_username
 
 router = APIRouter()
 service = AuthService()
@@ -42,37 +41,33 @@ def refresh_token(request: Request, response: Response, db: Session = Depends(ge
     logger.info("🔁 Token refreshed")
     return result
 
-# ✅ NEW: whoami endpoint used by the frontend to bootstrap auth context
+@router.post("/set-password", response_model=UserRead)
+def set_password(
+    payload: SetPasswordInput,
+    claims: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """First-time / forced password reset. Clears must_change_password flag."""
+    logger.info(f"➡️ POST /auth/set-password | user={claims.get('username')}")
+    user_id = int(claims.get("id") or claims.get("sub"))
+    result = service.set_password(user_id, payload, db)
+    logger.info(f"✅ Password set for user: {result.username}")
+    return result
+
+
 @router.get("/me")
 def me(claims: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    """
-    Returns current user + company context based on the access token.
-    Does NOT require tenant DB; reads user/company from master DB.
-    """
+    """Returns current user + company context based on the access token."""
     username = claims.get("username") or claims.get("sub")
     db_name = claims.get("db_name") or claims.get("db")
 
     if not username:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
 
-    # Master user shortcut
-    if is_master_username(username):
-        return {
-            "user": {
-                "id": 0,
-                "username": "master",
-                "email": settings.MASTER_EMAIL,
-                "role": "master",
-            },
-            "company": {"db_name": db_name},
-        }
-
-    # Lookup user in master DB
     user = auth_repo.get_user_by_username(db, username)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    # Fetch company (for db_name) if linked
     company = company_repo.get_by_id(db, user.company_id) if getattr(user, "company_id", None) else None
 
     return {
@@ -80,7 +75,22 @@ def me(claims: dict = Depends(get_current_user), db: Session = Depends(get_db)):
             "id": user.id,
             "username": user.username,
             "email": user.email,
-            "role": getattr(user, "role", "user"),
+            "role": getattr(user, "role", "tenant_admin"),
+            "must_change_password": bool(getattr(user, "must_change_password", False)),
         },
-        "company": {"db_name": getattr(company, "db_name", db_name)},
+        "company": {
+            "db_name": getattr(company, "db_name", db_name),
+            "company_name": getattr(company, "company_name", None),
+        },
     }
+
+
+@router.put("/me", response_model=UserRead)
+def update_me(
+    payload: UserUpdate,
+    claims: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Update the current user's username and/or email."""
+    user_id = int(claims.get("id") or claims.get("sub"))
+    return auth_repo.update_user(db, user_id, payload.username, payload.email)

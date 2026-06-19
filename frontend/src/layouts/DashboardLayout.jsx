@@ -4,6 +4,7 @@ import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Home, Users, FileText, BarChart, Menu, User, Plus, Settings } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { getCompanyProfile } from "../api/company";
+import WelcomeModal from "../components/WelcomeModal";
 
 export default function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -18,8 +19,7 @@ export default function DashboardLayout() {
   useEffect(() => {
     if (!ready || !token) return;
 
-    // Master account uses the master DB — skip tenant-only endpoint
-    if (user?.role === "master") {
+    if (user?.role === "super_admin") {
       setCompanyName("Joslasync");
       return;
     }
@@ -64,6 +64,7 @@ export default function DashboardLayout() {
     { path: "/clients", label: "Clients", icon: <Users size={18} /> },
     { path: "/invoices", label: "Invoices", icon: <FileText size={18} /> },
     { path: "/reports", label: "Reports", icon: <BarChart size={18} /> },
+    { path: "/user-profile", label: "Company", icon: <Settings size={18} /> },
   ];
 
   const openDropdown = () => {
@@ -93,6 +94,7 @@ export default function DashboardLayout() {
 
   return (
     <div className="flex h-screen font-sans bg-gray-50">
+      <WelcomeModal />
       {/* Sidebar */}
       <aside
         className={`fixed md:static top-0 left-0 h-full w-64 bg-gradient-to-b from-gray-900 to-gray-800 text-white flex flex-col transform ${

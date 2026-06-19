@@ -4,23 +4,24 @@ import {
 import API from "../lib/axios";
 import { me as apiMe } from "../api/auth";
 
-type User    = { id: number | string; username: string; email: string; role: string };
-type Company = { id?: string | number | null; slug?: string | null; db_name?: string | null };
+type User    = { id: number | string; username: string; email: string; role: string; must_change_password?: boolean };
+type Company = { id?: string | number | null; slug?: string | null; db_name?: string | null; company_name?: string | null };
 
 type Ctx = {
-  ready:    boolean;
-  token:    string | null;
-  user:     User    | null;
-  company:  Company | null;
-  setToken: (t: string | null) => void;
-  logout:   () => void;
+  ready:       boolean;
+  token:       string | null;
+  user:        User    | null;
+  company:     Company | null;
+  setToken:    (t: string | null) => void;
+  logout:      () => void;
+  refreshUser: () => Promise<void>;
 };
 
 const KEY = "access_token";
 
 const AuthCtx = createContext<Ctx>({
   ready: false, token: null, user: null, company: null,
-  setToken: () => {}, logout: () => {},
+  setToken: () => {}, logout: () => {}, refreshUser: async () => {},
 });
 
 function clearAxios() {
@@ -93,9 +94,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     document.cookie = "refresh_token=; Max-Age=0; path=/;";
   }, [clearState]);
 
+  const refreshUser = useCallback(async () => {
+    try {
+      const { user: u, company: c } = await apiMe();
+      setUser(u);
+      setCompany(c);
+    } catch {
+      clearState();
+    }
+  }, [clearState]);
+
   const value = useMemo(
-    () => ({ ready, token, user, company, setToken, logout }),
-    [ready, token, user, company, setToken, logout],
+    () => ({ ready, token, user, company, setToken, logout, refreshUser }),
+    [ready, token, user, company, setToken, logout, refreshUser],
   );
 
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;

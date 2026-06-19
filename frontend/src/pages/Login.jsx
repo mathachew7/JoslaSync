@@ -13,12 +13,20 @@ export default function Login() {
   const [errorMsg, setErrorMsg] = useState("");
   const navigate = useNavigate();
 
-  const { ready, token, setToken } = useAuth();
+  const { ready, token, user, setToken } = useAuth();
 
-  // If already logged in, redirect to dashboard
+  // If already logged in, redirect based on role (must_change_password takes priority)
   useEffect(() => {
-    if (ready && token) navigate("/dashboard", { replace: true });
-  }, [ready, token, navigate]);
+    if (ready && token && user) {
+      if (user.must_change_password) {
+        navigate("/set-password", { replace: true });
+      } else if (user.role === "super_admin") {
+        navigate("/admin", { replace: true });
+      } else {
+        navigate("/dashboard", { replace: true });
+      }
+    }
+  }, [ready, token, user, navigate]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -32,15 +40,27 @@ export default function Login() {
       if (!access) {
         setErrorMsg("Login failed: No token received.");
       } else {
-        // store token -> AuthContext will fetch /auth/me
         setToken(access);
-        navigate("/dashboard", { replace: true });
+        if (res.must_change_password) {
+          navigate("/set-password", { replace: true });
+        } else if (res.user?.role === "super_admin") {
+          navigate("/admin", { replace: true });
+        } else {
+          navigate("/dashboard", { replace: true });
+        }
       }
     } catch (err) {
-      const apiMsg =
-        err?.response?.data?.detail ||
-        err?.response?.data?.message ||
-        "Invalid username or password.";
+      let apiMsg;
+      if (err?.code === "ECONNABORTED" || err?.message?.includes("timeout")) {
+        apiMsg = "Server is taking too long to respond. Please try again.";
+      } else if (!err?.response) {
+        apiMsg = "Cannot reach the server. Check your connection or try again later.";
+      } else {
+        apiMsg =
+          err?.response?.data?.detail ||
+          err?.response?.data?.message ||
+          "Invalid username or password.";
+      }
       setErrorMsg(apiMsg);
     } finally {
       setLoading(false);
@@ -113,20 +133,20 @@ export default function Login() {
             )}
 
             <form onSubmit={handleLogin} className="space-y-5">
-              {/* Username */}
+              {/* Email or Username */}
               <div>
                 <label htmlFor="username" className="block text-sm font-medium text-gray-700">
-                  Username
+                  Email
                 </label>
                 <div className="mt-1 relative">
                   <input
                     id="username"
                     type="text"
                     name="username"
-                    autoComplete="username"
+                    autoComplete="email"
                     required
                     className="peer w-full rounded-xl border border-gray-300 bg-white/90 px-4 py-3 pr-10 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200"
-                    placeholder="e.g. admin"
+                    placeholder="you@example.com"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                   />

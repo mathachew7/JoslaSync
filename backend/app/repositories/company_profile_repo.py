@@ -1,4 +1,4 @@
-from typing import Optional, Mapping, Any
+from typing import List, Optional, Mapping, Any
 from sqlalchemy.orm import Session
 
 from app.core.logger import logger
@@ -11,6 +11,15 @@ class CompanyProfileRepository:
 
     def master_exists_by_name(self, db: Session, company_name: str) -> bool:
         return db.query(Company).filter_by(company_name=company_name).first() is not None
+
+    def get_all_companies(self, db: Session) -> List[Company]:
+        return db.query(Company).order_by(Company.created_at.desc()).all()
+
+    def update_company_status(self, db: Session, company: Company, status: str) -> Company:
+        company.status = status
+        db.commit()
+        db.refresh(company)
+        return company
 
     def create_master_profile(self, db: Session, company_name: str, db_name: str) -> Company:
         record = Company(company_name=company_name, db_name=db_name)

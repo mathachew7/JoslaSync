@@ -1,12 +1,12 @@
 # app/api/routes/company_profile.py
-from typing import Optional
+from typing import Dict, Optional
 
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.logger import logger
 from app.db.database import get_db
-from app.db.deps import get_company_db  # tenant-scoped session
+from app.db.deps import get_company_db, get_token_claims  # tenant-scoped session
 from app.schemas.company_profile import CompanyProfileOut
 from app.services.company_profile_service import CompanyProfileService
 
@@ -84,7 +84,7 @@ def register_company_profile(
 
 @router.put("/company-profile", response_model=CompanyProfileOut)
 def update_company_profile(
-    # ✅ all optional for partial updates
+    # all optional — supports both first-time setup (upsert) and partial updates
     company_name: Optional[str] = Form(None),
     company_email: Optional[str] = Form(None),
     company_mobile: Optional[str] = Form(None),
@@ -98,13 +98,16 @@ def update_company_profile(
     tax_rate: Optional[float] = Form(None),
     status: Optional[str] = Form(None),
     terms_and_conditions: Optional[str] = Form(None),
+    claims: Dict = Depends(get_token_claims),
     tenant_db: Session = Depends(get_company_db),
 ):
     """
-    Updates the current tenant's company profile (partial allowed).
+    Updates (or creates on first use) the current tenant's company profile.
     """
+    db_name: Optional[str] = claims.get("db") or claims.get("db_name")
     return service.update(
         tenant_db=tenant_db,
+        db_name=db_name,
         company_name=company_name,
         company_email=company_email,
         company_mobile=company_mobile,
