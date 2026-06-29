@@ -20,6 +20,7 @@ from app.core.logger import logger
 from app.core.config import settings
 from app.db.database import master_engine, BaseMaster, ensure_tenant_tables
 from app.db.models.master.company_profile import Company  # noqa: F401  registers in BaseMaster
+from app.db.models.master.tenant_features import TenantFeature  # noqa: F401
 from app.db.models.user import User  # noqa: F401
 
 
@@ -88,7 +89,7 @@ def build_app() -> FastAPI:
         allow_origins=settings.CORS_ORIGINS,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With", "X-Request-ID"],
+        allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With", "X-Request-ID", "X-Tenant-DB"],
         expose_headers=["X-Request-ID"],
         max_age=600,
     )

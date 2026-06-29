@@ -21,6 +21,7 @@ from app.schemas.invoice import (
     SendInvoiceRequest,
 )
 from app.crud import invoice as invoice_crud
+from app.crud.invoice import log_invoice_event
 
 router = APIRouter(prefix="/invoices", tags=["invoices"])
 
@@ -33,13 +34,15 @@ def list_invoices(
     client_id: Optional[UUID] = Query(None, description="Filter by client_id"),
     status: Optional[str] = Query(
         None,
-        description="INVOICE|VOID|DRAFT",
-        pattern="^(INVOICE|VOID|DRAFT)$",
+        description="INVOICE|VOID|DRAFT|QUOTE",
+        pattern="^(INVOICE|VOID|DRAFT|QUOTE)$",
     ),
     q: Optional[str] = Query(None, description="Search invoice_no, client name/email/company"),
     date_from: Optional[str] = Query(None, description="YYYY-MM-DD"),
     date_to: Optional[str] = Query(None, description="YYYY-MM-DD"),
-    sort: Optional[str] = Query("invoice_date", description="invoice_date|created_at|total|invoice_no"),
+    due_before: Optional[str] = Query(None, description="YYYY-MM-DD — filter invoices with due_date before this"),
+    due_after: Optional[str] = Query(None, description="YYYY-MM-DD — filter invoices with due_date after this"),
+    sort: Optional[str] = Query("invoice_date", description="invoice_date|created_at|total|invoice_no|due_date"),
     order: Optional[str] = Query("desc", description="asc|desc"),
     page: int = Query(1, ge=1),
     page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
@@ -50,7 +53,7 @@ def list_invoices(
     offset = (page - 1) * page_size
     logger.info(
         f"➡️ GET /invoices | user={uname} client_id={client_id} status={status} "
-        f"q={q!r} date_from={date_from} date_to={date_to} sort={sort} order={order} page={page} size={page_size}"
+        f"q={q!r} date_from={date_from} date_to={date_to} due_before={due_before} sort={sort} order={order} page={page} size={page_size}"
     )
 
     total = invoice_crud.count_invoices(
@@ -60,6 +63,8 @@ def list_invoices(
         qtext=q,
         date_from=date_from,
         date_to=date_to,
+        due_before=due_before,
+        due_after=due_after,
     )
     rows = invoice_crud.list_invoices(
         db,
@@ -68,6 +73,8 @@ def list_invoices(
         qtext=q,
         date_from=date_from,
         date_to=date_to,
+        due_before=due_before,
+        due_after=due_after,
         sort=sort,
         order=order,
         limit=page_size,
@@ -166,6 +173,8 @@ def create_invoice(
         logger.info(f"❌ /invoices create | {e}")
         raise HTTPException(status_code=400, detail=str(e))
     logger.info(f"✅ /invoices created | id={obj.id} no={obj.invoice_no} total={obj.total}")
+    actor = user.get("username") or user.get("sub")
+    log_invoice_event(db, obj.id, "created", "Invoice created", actor)
     return InvoiceRead.model_validate(obj)
 
 
@@ -204,6 +213,8 @@ def update_invoice(
         raise HTTPException(status_code=400, detail=str(e))
 
     logger.info(f"✅ /invoices/{invoice_id} updated (status={current_status} note={payload.edit_note!r})")
+    actor = user.get("username") or user.get("sub")
+    log_invoice_event(db, invoice_id, "amended", payload.edit_note if payload.edit_note else None, actor)
     return InvoiceRead.model_validate(obj)
 
 
@@ -241,6 +252,33 @@ def issue_invoice(
     db.commit()
     db.refresh(obj)
     logger.info(f"✅ /invoices/{invoice_id}/issue | issued")
+    actor = user.get("username") or user.get("sub")
+    log_invoice_event(db, invoice_id, "issued", None, actor)
+    return InvoiceRead.model_validate(obj)
+
+
+# --- Accept: promote QUOTE → INVOICE ---
+@router.post("/{invoice_id}/accept", response_model=InvoiceRead)
+def accept_quote(
+    invoice_id: UUID,
+    db: Session = Depends(get_company_db),
+    user: dict = Depends(get_current_user),
+):
+    uname = user.get("email") or user.get("sub") or "unknown"
+    logger.info(f"➡️ POST /invoices/{invoice_id}/accept | user={uname}")
+    obj = invoice_crud.get_invoice(db, invoice_id)
+    if not obj:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    if (obj.status or "").upper() != "QUOTE":
+        raise HTTPException(status_code=400, detail="Only QUOTE invoices can be accepted.")
+    inv_no = invoice_crud.next_invoice_no(db, obj.company_id)
+    obj.invoice_no = inv_no
+    obj.status = "INVOICE"
+    db.commit()
+    db.refresh(obj)
+    actor = user.get("username") or user.get("sub")
+    log_invoice_event(db, invoice_id, "accepted", None, actor)
+    logger.info(f"✅ /invoices/{invoice_id}/accept | accepted, invoice_no={inv_no}")
     return InvoiceRead.model_validate(obj)
 
 
@@ -263,6 +301,8 @@ def void_invoice(
         )
 
     logger.info(f"✅ /invoices/{invoice_id}/void | status={obj.status}")
+    actor = user.get("username") or user.get("sub")
+    log_invoice_event(db, invoice_id, "voided", None, actor)
     return InvoiceRead.model_validate(obj)
 
 
@@ -281,6 +321,8 @@ def record_payment(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     logger.info(f"✅ /invoices/{invoice_id}/pay | amount_paid={obj.amount_paid}")
+    actor = user.get("username") or user.get("sub")
+    log_invoice_event(db, invoice_id, "payment", f"Payment of ${payload.amount} recorded", actor)
     return InvoiceRead.model_validate(obj)
 
 
@@ -450,4 +492,49 @@ def clone_invoice(
         raise HTTPException(status_code=500, detail="Failed to clone invoice")
 
     logger.info(f"✅ /invoices/{invoice_id}/clone | new_id={new_obj.id} new_no={new_obj.invoice_no}")
+    actor = user.get("username") or user.get("sub")
+    # Log on the source invoice
+    try:
+        log_invoice_event(db, invoice_id, "cloned", f"Cloned to #{new_obj.invoice_no}", actor)
+    except Exception:
+        pass  # source may be deleted; don't block the response
+    # Log on the new invoice
+    log_invoice_event(db, new_obj.id, "cloned", f"Cloned from #{invoice_id}", actor)
     return InvoiceRead.model_validate(new_obj)
+
+
+# --- Activity log ---
+@router.get("/{invoice_id}/events")
+def get_invoice_events(
+    invoice_id: UUID,
+    db: Session = Depends(get_company_db),
+    user: dict = Depends(get_current_user),
+):
+    from app.db.models.tenant.invoice_event import InvoiceEvent
+    from sqlalchemy import select, desc as sa_desc
+
+    uname = user.get("email") or user.get("sub") or "unknown"
+    logger.info(f"➡️ GET /invoices/{invoice_id}/events | user={uname}")
+
+    inv = invoice_crud.get_invoice(db, invoice_id)
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    stmt = (
+        select(InvoiceEvent)
+        .where(InvoiceEvent.invoice_id == invoice_id)
+        .order_by(sa_desc(InvoiceEvent.created_at))
+    )
+    events = db.execute(stmt).scalars().all()
+    logger.info(f"✅ /invoices/{invoice_id}/events | returned={len(events)}")
+    return [
+        {
+            "id": e.id,
+            "invoice_id": str(e.invoice_id),
+            "event_type": e.event_type,
+            "description": e.description,
+            "created_by": e.created_by,
+            "created_at": e.created_at.isoformat() if e.created_at else None,
+        }
+        for e in events
+    ]

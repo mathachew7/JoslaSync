@@ -67,3 +67,27 @@ export async function resetUserPassword(userId: number): Promise<{ user: TenantU
 export async function setPassword(newPassword: string): Promise<void> {
   await API.post("/api/auth/set-password", { new_password: newPassword });
 }
+
+export type TenantFeatures = {
+  draft_invoices: boolean;
+  recurring_invoices: boolean;
+  multi_user: boolean;
+  email_reminders: boolean;
+};
+
+export async function getTenantFeatures(companyId: number): Promise<TenantFeatures> {
+  const { data } = await API.get<TenantFeatures>(`/api/admin/tenants/${companyId}/features`);
+  return data;
+}
+
+export async function updateTenantFeature(
+  companyId: number,
+  featureKey: string,
+  enabled: boolean
+): Promise<TenantFeatures> {
+  const { data } = await API.put<TenantFeatures>(`/api/admin/tenants/${companyId}/features`, {
+    feature_key: featureKey,
+    enabled,
+  });
+  return data;
+}

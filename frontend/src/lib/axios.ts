@@ -111,4 +111,12 @@ API.interceptors.response.use(
   }
 );
 
+export function setViewingTenantHeader(dbName: string) {
+  (API.defaults.headers.common as Record<string, string>)["X-Tenant-DB"] = dbName;
+}
+
+export function clearViewingTenantHeader() {
+  delete (API.defaults.headers.common as Record<string, unknown>)["X-Tenant-DB"];
+}
+
 export default API;

@@ -24,11 +24,7 @@ export default function SetPassword() {
     try {
       await setPassword(password);
       await refreshUser();
-      if (user?.role === "super_admin") {
-        navigate("/admin", { replace: true });
-      } else {
-        navigate("/setup", { replace: true });
-      }
+      navigate("/setup", { replace: true });
     } catch (err) {
       setError(
         err?.response?.data?.detail ||

@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
 from app.core.logger import logger
-from app.schemas.admin import TenantCreate, TenantRead, TenantUserRead, AdminStats, ResetPasswordResponse
+from app.schemas.admin import TenantCreate, TenantRead, TenantUserRead, AdminStats, ResetPasswordResponse, TenantFeaturesOut
+from app.db.models.master.tenant_features import TenantFeature, VALID_FEATURES
 from app.repositories.auth_repo import AuthRepository
 from app.repositories.company_profile_repo import CompanyProfileRepository
 from app.utils.security import hash_password
@@ -113,6 +114,31 @@ class AdminService:
             user=TenantUserRead.model_validate(user),
             temp_password=temp_password,
         )
+
+    def _get_features_dict(self, company_id: int, db: Session) -> dict:
+        rows = db.query(TenantFeature).filter(TenantFeature.company_id == company_id).all()
+        existing = {r.feature_key: r.enabled for r in rows}
+        return {key: existing.get(key, True) for key in VALID_FEATURES}
+
+    def get_tenant_features(self, company_id: int, db: Session) -> TenantFeaturesOut:
+        if not self.company_repo.get_by_id(db, company_id):
+            raise HTTPException(status_code=404, detail="Tenant not found")
+        return TenantFeaturesOut(**self._get_features_dict(company_id, db))
+
+    def update_tenant_feature(self, company_id: int, feature_key: str, enabled: bool, db: Session) -> TenantFeaturesOut:
+        if not self.company_repo.get_by_id(db, company_id):
+            raise HTTPException(status_code=404, detail="Tenant not found")
+        row = db.query(TenantFeature).filter(
+            TenantFeature.company_id == company_id,
+            TenantFeature.feature_key == feature_key,
+        ).first()
+        if row:
+            row.enabled = enabled
+        else:
+            db.add(TenantFeature(company_id=company_id, feature_key=feature_key, enabled=enabled))
+        db.commit()
+        logger.info(f"✅ Feature '{feature_key}' set to {enabled} for company {company_id}")
+        return TenantFeaturesOut(**self._get_features_dict(company_id, db))
 
     def get_stats(self, db: Session) -> AdminStats:
         companies = self.company_repo.get_all_companies(db)

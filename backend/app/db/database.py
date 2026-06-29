@@ -105,6 +105,7 @@ def ensure_tenant_tables(db_name: str):
     from app.db.models.tenant import company_profile as _company_profile  # noqa: F401
     from app.db.models.tenant import company_settings as _company_settings  # noqa: F401
     from app.db.models.tenant import invoice as _invoice  # noqa: F401
+    from app.db.models.tenant import invoice_event as _invoice_event  # noqa: F401
 
     engine = get_engine_for_db(db_name)
     BaseTenant.metadata.create_all(bind=engine)

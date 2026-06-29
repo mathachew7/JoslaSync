@@ -19,7 +19,7 @@ class Invoice(BaseTenant, TimestampMixin):
     __tablename__ = "invoices"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('DRAFT','INVOICE','VOID')",
+            "status IN ('DRAFT','INVOICE','VOID','QUOTE')",
             name="invoices_status_chk",
         ),
         CheckConstraint(

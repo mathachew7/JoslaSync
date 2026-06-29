@@ -13,6 +13,7 @@ from app.core.logger import logger
 from app.schemas.invoice import InvoiceCreate
 from app.validators.invoice_validator import validate_invoice_create
 from app.db.models.tenant.invoice import Invoice, InvoiceItem
+from app.db.models.tenant.invoice_event import InvoiceEvent
 from app.db.models.tenant.client import Client as ClientModel
 from app.services.invoice_service import (
     compute_totals,
@@ -27,6 +28,25 @@ from app.services.invoice_service import (
 
 class InvoiceNotFound(Exception):
     pass
+
+
+def log_invoice_event(
+    db: Session,
+    invoice_id,
+    event_type: str,
+    description: Optional[str] = None,
+    created_by: Optional[str] = None,
+) -> None:
+    """Create an InvoiceEvent row and commit it. Safe to call after any invoice mutation."""
+    event = InvoiceEvent(
+        invoice_id=invoice_id,
+        event_type=event_type,
+        description=description,
+        created_by=created_by,
+    )
+    db.add(event)
+    db.commit()
+    logger.debug(f"📋 Event logged: invoice_id={invoice_id} type={event_type} by={created_by}")
 
 
 def _to_date(d: Optional[Union[str, date]]) -> Optional[date]:
@@ -52,6 +72,8 @@ def _apply_common_filters(
     qtext: Optional[str] = None,
     date_from: Optional[Union[str, date]] = None,  # "YYYY-MM-DD" or date
     date_to: Optional[Union[str, date]] = None,    # "YYYY-MM-DD" or date
+    due_before: Optional[Union[str, date]] = None,  # filter: due_date < this date
+    due_after: Optional[Union[str, date]] = None,   # filter: due_date > this date
 ):
     if client_id:
         stmt = stmt.where(Invoice.client_id == client_id)
@@ -64,6 +86,13 @@ def _apply_common_filters(
         stmt = stmt.where(Invoice.invoice_date >= df)
     if dt:
         stmt = stmt.where(Invoice.invoice_date <= dt)
+
+    db_val = _to_date(due_before)
+    da_val = _to_date(due_after)
+    if db_val:
+        stmt = stmt.where(Invoice.due_date != None, Invoice.due_date < db_val)  # noqa: E711
+    if da_val:
+        stmt = stmt.where(Invoice.due_date != None, Invoice.due_date > da_val)  # noqa: E711
 
     if qtext:
         like = f"%{qtext.strip()}%"
@@ -88,6 +117,7 @@ def _apply_sort(stmt, *, sort: Optional[str], order: Optional[str]):
         "created_at": Invoice.created_at,
         "total": Invoice.total,
         "invoice_no": Invoice.invoice_no,
+        "due_date": Invoice.due_date,
     }
     sort_col = sort_map.get((sort or "invoice_date"), Invoice.invoice_date)
     return stmt.order_by(asc(sort_col) if (order or "desc") == "asc" else desc(sort_col))
@@ -213,8 +243,10 @@ def list_invoices(
     client_id: Optional[UUID_T] = None,
     status: Optional[str] = None,
     qtext: Optional[str] = None,
-    date_from: Optional[Union[str, date]] = None,   # "YYYY-MM-DD" or date
-    date_to: Optional[Union[str, date]] = None,     # "YYYY-MM-DD" or date
+    date_from: Optional[Union[str, date]] = None,
+    date_to: Optional[Union[str, date]] = None,
+    due_before: Optional[Union[str, date]] = None,
+    due_after: Optional[Union[str, date]] = None,
     sort: Optional[str] = "invoice_date",
     order: Optional[str] = "desc",
     limit: int = 50,
@@ -222,7 +254,7 @@ def list_invoices(
 ) -> Sequence[Invoice]:
     logger.debug(
         f"📜 Listing invoices client={client_id} status={status} q={qtext!r} "
-        f"from={date_from} to={date_to} sort={sort} order={order} limit={limit} offset={offset}"
+        f"from={date_from} to={date_to} due_before={due_before} sort={sort} order={order} limit={limit} offset={offset}"
     )
     stmt = select(Invoice)
     stmt = _apply_common_filters(
@@ -232,6 +264,8 @@ def list_invoices(
         qtext=qtext,
         date_from=date_from,
         date_to=date_to,
+        due_before=due_before,
+        due_after=due_after,
     )
     stmt = _apply_sort(stmt, sort=sort, order=order)
     return db.execute(stmt.limit(limit).offset(offset)).scalars().all()
@@ -245,6 +279,8 @@ def count_invoices(
     qtext: Optional[str] = None,
     date_from: Optional[Union[str, date]] = None,
     date_to: Optional[Union[str, date]] = None,
+    due_before: Optional[Union[str, date]] = None,
+    due_after: Optional[Union[str, date]] = None,
 ) -> int:
     # ensure FROM clause is Invoice so joins in filters work
     stmt = select(func.count(Invoice.id)).select_from(Invoice)
@@ -255,6 +291,8 @@ def count_invoices(
         qtext=qtext,
         date_from=date_from,
         date_to=date_to,
+        due_before=due_before,
+        due_after=due_after,
     )
     return int(db.execute(stmt).scalar() or 0)
 

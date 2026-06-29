@@ -45,6 +45,7 @@ def get_current_user(claims: Dict = Depends(get_token_claims)) -> Dict:
         "email": claims.get("email"),
         "role": claims.get("role"),
         "db": claims.get("db") or claims.get("db_name"),
+        "company_id": claims.get("company_id"),
     }
 
 
@@ -58,12 +59,19 @@ def require_super_admin(user: Dict = Depends(get_current_user)) -> Dict:
     return user
 
 
-def get_company_db(claims: Dict = Depends(get_token_claims)) -> Generator[Session, None, None]:
+def get_company_db(request: Request, claims: Dict = Depends(get_token_claims)) -> Generator[Session, None, None]:
     """
     Open a tenant-scoped DB session using db_name from JWT claims.
+    Super admins may pass X-Tenant-DB header to view another tenant's data.
     Ensures tenant tables exist (best-effort, idempotent).
     """
-    db_name: Optional[str] = claims.get("db") or claims.get("db_name")
+    role: Optional[str] = claims.get("role")
+    override_db = request.headers.get("X-Tenant-DB")
+    if override_db and role in ("super_admin", "master"):
+        db_name: Optional[str] = override_db
+        logger.info(f"🔍 Super admin viewing tenant DB: {db_name}")
+    else:
+        db_name = claims.get("db") or claims.get("db_name")
     if not db_name:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No tenant database in token")
 

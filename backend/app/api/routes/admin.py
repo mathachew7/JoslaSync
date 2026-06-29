@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.logger import logger
 from app.db.database import get_db
 from app.db.deps import require_super_admin
-from app.schemas.admin import TenantCreate, TenantRead, TenantStatusUpdate, AdminStats, ResetPasswordResponse
+from app.schemas.admin import TenantCreate, TenantRead, TenantStatusUpdate, AdminStats, ResetPasswordResponse, FeatureFlagUpdate, TenantFeaturesOut
 from app.services.admin_service import AdminService
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -70,3 +70,24 @@ def update_tenant_status(
 ):
     logger.info(f"➡️ PUT /admin/tenants/{company_id}/status | status={body.status}")
     return service.update_tenant_status(company_id, body.status, db)
+
+
+@router.get("/tenants/{company_id}/features", response_model=TenantFeaturesOut)
+def get_tenant_features(
+    company_id: int,
+    _: dict = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    logger.info(f"➡️ GET /admin/tenants/{company_id}/features")
+    return service.get_tenant_features(company_id, db)
+
+
+@router.put("/tenants/{company_id}/features", response_model=TenantFeaturesOut)
+def update_tenant_feature(
+    company_id: int,
+    body: FeatureFlagUpdate,
+    _: dict = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    logger.info(f"➡️ PUT /admin/tenants/{company_id}/features | key={body.feature_key} enabled={body.enabled}")
+    return service.update_tenant_feature(company_id, body.feature_key, body.enabled, db)

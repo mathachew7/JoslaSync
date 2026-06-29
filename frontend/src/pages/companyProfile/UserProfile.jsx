@@ -6,6 +6,7 @@ import {
   registerCompanyProfile,
   getCompanySettings,
   updateReminderSettings,
+  updateInvoiceSettings,
 } from "../../api/company";
 import DialogBox from "../../components/DialogBox";
 import {
@@ -21,12 +22,15 @@ import {
   Bell,
   FileText,
   ShieldCheck,
+  Receipt,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
+import { getDefaultTerms } from "../../utils/generateInvoicePdf";
 
 const TABS = [
   { id: "company",   label: "Company",    icon: Building2 },
   { id: "address",   label: "Address & Tax", icon: MapPin },
+  { id: "invoices",  label: "Invoices",   icon: Receipt },
   { id: "reminders", label: "Reminders",  icon: Bell },
   { id: "legal",     label: "Legal",      icon: FileText },
   { id: "security",  label: "Security",   icon: ShieldCheck },
@@ -46,6 +50,14 @@ export default function UserProfile() {
     reminder_max_count: 3,
   });
   const [savingReminder, setSavingReminder] = useState(false);
+
+  const [invoiceSettings, setInvoiceSettings] = useState({
+    invoice_prefix: "INV",
+    default_tax_rate: 0,
+    currency_code: "USD",
+    terms_template: "",
+  });
+  const [savingInvoice, setSavingInvoice] = useState(false);
 
   const [initial, setInitial] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -87,14 +99,32 @@ export default function UserProfile() {
           getCompanySettings().catch(() => null),
         ]);
         if (!alive) return;
-        if (cs)
+        if (cs) {
           setReminderSettings({
             reminder_enabled: !!cs.reminder_enabled,
             reminder_frequency_days: cs.reminder_frequency_days ?? 7,
             reminder_max_count: cs.reminder_max_count ?? 3,
           });
-        setInitial(data);
-        setProfile({ ...data, username: data.username || "", email: data.company_email || "", password: "" });
+          const coName  = data?.company_name  || data?.full_name  || "";
+          const coEmail = data?.company_email || data?.email || "";
+          setInvoiceSettings({
+            invoice_prefix: cs.invoice_prefix || "INV",
+            default_tax_rate: Number(cs.default_tax_rate ?? 0),
+            currency_code: cs.currency_code || "USD",
+            terms_template: cs.terms_template || getDefaultTerms(coName, coEmail),
+          });
+        }
+        const coName  = data?.company_name  || data?.full_name  || "";
+        const coEmail = data?.company_email || data?.email || "";
+        const prefilled = {
+          ...data,
+          username: data.username || "",
+          email: data.company_email || "",
+          password: "",
+          terms_and_conditions: data.terms_and_conditions || getDefaultTerms(coName, coEmail),
+        };
+        setInitial(prefilled);
+        setProfile(prefilled);
         setLogoPreview(data.logo_url || null);
       } catch {
         if (!alive) return;
@@ -103,7 +133,7 @@ export default function UserProfile() {
           company_name: "", company_email: "", company_mobile: "",
           address1: "", address2: "", city: "", state: "", zip_code: "",
           tax_rate: "", status: "Active", username: "", email: "", password: "",
-          logoFile: null, terms_and_conditions: "",
+          logoFile: null, terms_and_conditions: getDefaultTerms("Your Company", ""),
         });
         setLogoPreview(null);
       } finally {
@@ -341,6 +371,84 @@ export default function UserProfile() {
     </div>
   );
 
+  const tabInvoices = () => (
+    <div className="space-y-5">
+      <p className="text-sm text-gray-500">Configure invoice numbering, tax defaults, and currency for this company.</p>
+      <div className="grid gap-4 md:grid-cols-3">
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1.5">Invoice prefix</label>
+          <input
+            type="text"
+            value={invoiceSettings.invoice_prefix}
+            onChange={(e) => setInvoiceSettings((s) => ({ ...s, invoice_prefix: e.target.value.toUpperCase() }))}
+            maxLength={10}
+            placeholder="INV"
+            className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"
+          />
+          <p className="text-xs text-gray-400 mt-1">e.g. <span className="font-mono">INV-202506-00001</span></p>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1.5">Default tax rate (%)</label>
+          <input
+            type="number"
+            min={0}
+            max={100}
+            step={0.5}
+            value={invoiceSettings.default_tax_rate}
+            onChange={(e) => setInvoiceSettings((s) => ({ ...s, default_tax_rate: Number(e.target.value) }))}
+            className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1.5">Currency</label>
+          <select
+            value={invoiceSettings.currency_code}
+            onChange={(e) => setInvoiceSettings((s) => ({ ...s, currency_code: e.target.value }))}
+            className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"
+          >
+            <option value="USD">USD — US Dollar</option>
+            <option value="EUR">EUR — Euro</option>
+            <option value="GBP">GBP — British Pound</option>
+            <option value="CAD">CAD — Canadian Dollar</option>
+            <option value="AUD">AUD — Australian Dollar</option>
+            <option value="INR">INR — Indian Rupee</option>
+            <option value="NPR">NPR — Nepalese Rupee</option>
+            <option value="AED">AED — UAE Dirham</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1.5">Terms & conditions (for PDF)</label>
+        <textarea
+          value={invoiceSettings.terms_template}
+          onChange={(e) => setInvoiceSettings((s) => ({ ...s, terms_template: e.target.value }))}
+          rows={8}
+          placeholder="Enter your standard terms & conditions. These will appear on every invoice PDF…"
+          className="w-full border rounded-lg px-3 py-2 text-sm resize-y focus:outline-none focus:border-blue-400"
+        />
+        <p className="text-xs text-gray-400 mt-1">Leave blank to use the default boilerplate.</p>
+      </div>
+      <button
+        onClick={async () => {
+          setSavingInvoice(true);
+          try {
+            await updateInvoiceSettings(invoiceSettings);
+            setToast({ show: true, type: "success", msg: "Invoice settings saved." });
+          } catch {
+            setToast({ show: true, type: "error", msg: "Failed to save invoice settings." });
+          } finally {
+            setSavingInvoice(false);
+          }
+        }}
+        disabled={savingInvoice}
+        className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 transition-colors"
+      >
+        {savingInvoice && <Loader2 size={14} className="animate-spin" />}
+        Save Invoice Settings
+      </button>
+    </div>
+  );
+
   const tabLegal = (create = false) => (
     <div className="space-y-3">
       <p className="text-sm text-gray-500">This will be auto-filled on every invoice you generate. You can still edit it per invoice.</p>
@@ -392,6 +500,7 @@ export default function UserProfile() {
   const tabContent = (create = false) => ({
     company:   tabCompany(create),
     address:   tabAddress(create),
+    invoices:  tabInvoices(),
     reminders: tabReminders(),
     legal:     tabLegal(create),
     security:  tabSecurity(create),

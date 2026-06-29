@@ -71,3 +71,19 @@ export const updateReminderSettings = async (settings: ReminderSettings): Promis
   fd.append("reminder_max_count", String(settings.reminder_max_count));
   await API.put("/api/company/settings", fd);
 };
+
+export type InvoiceSettings = {
+  invoice_prefix: string;
+  default_tax_rate: number;
+  currency_code: string;
+  terms_template: string;
+};
+
+export const updateInvoiceSettings = async (settings: Partial<InvoiceSettings>): Promise<void> => {
+  const fd = new FormData();
+  if (settings.invoice_prefix !== undefined) fd.append("invoice_prefix", settings.invoice_prefix);
+  if (settings.default_tax_rate !== undefined) fd.append("default_tax_rate", String(settings.default_tax_rate));
+  if (settings.currency_code !== undefined) fd.append("currency_code", settings.currency_code);
+  if (settings.terms_template !== undefined) fd.append("terms_template", settings.terms_template);
+  await API.put("/api/company/settings", fd);
+};

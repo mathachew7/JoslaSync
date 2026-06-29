@@ -6,6 +6,7 @@ import { getCompanyProfile } from "../../api/company";
 import { createInvoice } from "../../api/invoices";
 import { useAuth } from "../../context/AuthContext";
 import DialogBox from "../../components/DialogBox";
+import FeatureGate from "../../components/FeatureGate";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -206,7 +207,7 @@ export default function CreateInvoice() {
   const addLine   = () => setLineItems((p) => [...p, { description: "", quantity: 1, price: 0 }]);
   const removeLine = (idx) => setLineItems((p) => p.length > 1 ? p.filter((_, i) => i !== idx) : p);
 
-  const handleSave = async () => {
+  const handleSave = async (saveStatus = "INVOICE") => {
     setSubmitted(true);
     if (!isValid || saving) return;
     setSaving(true);
@@ -239,6 +240,7 @@ export default function CreateInvoice() {
         created_by_name:    company?.full_name || user?.username || undefined,
       };
 
+      payload.status = saveStatus;
       const created = await createInvoice(payload);
       navigate(`/invoices/${created.id}`, { replace: true });
     } catch (err) {
@@ -663,8 +665,26 @@ export default function CreateInvoice() {
         >
           Cancel
         </button>
+        <FeatureGate feature="draft_invoices">
+          <button
+            onClick={() => handleSave("DRAFT")}
+            disabled={saving}
+            className="px-4 py-2 text-sm rounded border border-gray-300 text-gray-700 hover:bg-gray-50 transition disabled:opacity-60"
+          >
+            {saving ? <Loader2 size={14} className="animate-spin inline" /> : "Save as Draft"}
+          </button>
+        </FeatureGate>
+        <FeatureGate feature="draft_invoices">
+          <button
+            onClick={() => handleSave("QUOTE")}
+            disabled={saving}
+            className="px-4 py-2 text-sm rounded border border-amber-300 text-amber-700 hover:bg-amber-50 transition disabled:opacity-60"
+          >
+            {saving ? <Loader2 size={14} className="animate-spin inline" /> : "Save as Quote"}
+          </button>
+        </FeatureGate>
         <button
-          onClick={handleSave}
+          onClick={() => handleSave("INVOICE")}
           disabled={saving}
           className={`px-6 py-2 text-sm rounded text-white shadow transition ${
             saving ? "bg-indigo-400 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700"

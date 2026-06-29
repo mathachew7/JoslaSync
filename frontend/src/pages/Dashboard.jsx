@@ -7,7 +7,7 @@ import { useAuth } from "../context/AuthContext";
 import { getInvoiceStats, getMonthlyTotals, listInvoices } from "../api/invoices";
 import { listClients } from "../api/clients";
 import { useNavigate } from "react-router-dom";
-import { TrendingUp, DollarSign, Clock, AlertTriangle, FileText, Users, FilePen, Percent } from "lucide-react";
+import { TrendingUp, DollarSign, Clock, AlertTriangle, FileText, Users, FilePen, Percent, Plus, UserPlus, Bell } from "lucide-react";
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
@@ -23,6 +23,7 @@ const STATUS_STYLES = {
   INVOICE: { label: "Issued",  bg: "bg-emerald-50", text: "text-emerald-700", ring: "ring-emerald-200" },
   DRAFT:   { label: "Draft",   bg: "bg-amber-50",   text: "text-amber-700",   ring: "ring-amber-200"   },
   VOID:    { label: "Void",    bg: "bg-red-50",     text: "text-red-700",     ring: "ring-red-200"     },
+  QUOTE:   { label: "Quote",   bg: "bg-violet-50",  text: "text-violet-700",  ring: "ring-violet-200"  },
 };
 
 export default function Dashboard() {
@@ -37,6 +38,7 @@ export default function Dashboard() {
   const [stats,   setStats]   = useState(null);
   const [monthly, setMonthly] = useState([]);
   const [recent,  setRecent]  = useState([]);
+  const [overdue, setOverdue] = useState([]);
   const [clientsTotal, setClientsTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [err,     setErr]     = useState("");
@@ -52,11 +54,13 @@ export default function Dashboard() {
       setLoading(true);
       setErr("");
       try {
-        const [s, m, ri, cl] = await Promise.all([
+        const today = new Date().toISOString().split("T")[0];
+        const [s, m, ri, cl, ov] = await Promise.all([
           getInvoiceStats(),
           getMonthlyTotals({ year_from: yearFrom, year_to: yearTo }),
           listInvoices({ page: 1, page_size: 6, sort: "invoice_date", order: "desc" }),
           listClients({ page: 1, page_size: 1 }),
+          listInvoices({ page: 1, page_size: 10, status: "INVOICE", due_before: today, sort: "due_date", order: "asc" }).catch(() => null),
         ]);
         if (cancelled) return;
         setStats(s);
@@ -68,6 +72,9 @@ export default function Dashboard() {
         })));
         setRecent(ri?.data || []);
         setClientsTotal(cl?.meta?.total || 0);
+        // Filter client-side for those still unpaid (due_before already filters by date, backend may not)
+        const ovData = (ov?.data || []).filter(inv => Number(inv.amount_paid ?? 0) < Number(inv.total ?? 0));
+        setOverdue(ovData);
       } catch (e) {
         if (!cancelled) setErr("Failed to load dashboard data.");
       } finally {
@@ -112,6 +119,53 @@ export default function Dashboard() {
 
       {err && (
         <div className="p-3 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 text-sm">{err}</div>
+      )}
+
+      {/* Quick Actions */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          { label: "New Invoice", icon: Plus, color: "bg-blue-600 hover:bg-blue-700 text-white", to: "/invoices/create" },
+          { label: "Add Client",  icon: UserPlus, color: "bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 shadow-sm", to: "/clients/add" },
+          { label: "All Invoices", icon: FileText, color: "bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 shadow-sm", to: "/invoices" },
+          { label: "Overdue" + (overdue.length ? ` (${overdue.length})` : ""), icon: Bell, color: overdue.length ? "bg-red-50 hover:bg-red-100 text-red-700 border border-red-200" : "bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 shadow-sm", to: "/invoices?status=INVOICE" },
+        ].map(({ label, icon: Icon, color, to }) => (
+          <button key={label} onClick={() => navigate(to)}
+            className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium transition-colors ${color}`}>
+            <Icon size={16} /> {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Overdue Alert */}
+      {!loading && overdue.length > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-xl overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-3 border-b border-red-200">
+            <div className="flex items-center gap-2">
+              <AlertTriangle size={15} className="text-red-600" />
+              <span className="text-sm font-semibold text-red-800">{overdue.length} overdue invoice{overdue.length !== 1 ? "s" : ""}</span>
+            </div>
+            <button onClick={() => navigate("/invoices")} className="text-xs text-red-600 hover:underline">View all →</button>
+          </div>
+          <div className="divide-y divide-red-100">
+            {overdue.slice(0, 5).map(inv => {
+              const balance = Number(inv.total ?? 0) - Number(inv.amount_paid ?? 0);
+              const daysLate = inv.due_date ? Math.floor((Date.now() - new Date(inv.due_date).getTime()) / 86400000) : null;
+              return (
+                <div key={inv.id} onClick={() => navigate(`/invoices/${inv.id}`)}
+                  className="flex items-center justify-between px-5 py-2.5 hover:bg-red-100/50 cursor-pointer transition">
+                  <div>
+                    <span className="text-sm font-medium text-gray-800">{inv.invoice_no}</span>
+                    {inv.client_name && <span className="text-xs text-gray-500 ml-2">· {inv.client_name}</span>}
+                  </div>
+                  <div className="flex items-center gap-4 shrink-0">
+                    {daysLate !== null && <span className="text-xs text-red-600 font-medium">{daysLate}d late</span>}
+                    <span className="text-sm font-semibold text-red-700">{fmtMoneyFull(balance)}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       )}
 
       {/* Financial KPIs */}

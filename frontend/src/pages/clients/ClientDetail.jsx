@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft, Edit2, Save, X, Trash2, Mail, Phone,
-  MapPin, Building2, Calendar, FileText, Loader2, Eye,
+  MapPin, Building2, Calendar, FileText, Loader2, Eye, BarChart2,
 } from "lucide-react";
 import { US_STATES, STATE_TAX_RATES } from "../../constants/usStates";
 import { getClient, updateClient, deleteClient } from "../../api/clients";
 import { listInvoices } from "../../api/invoices";
+import { getCompanyProfile } from "../../api/company";
+import { generateStatementPdf } from "../../utils/generateStatementPdf";
 import DialogBox from "../../components/DialogBox";
 
 const STATUS_OPTIONS = ["Active", "Deactivated", "Blacklisted"];
@@ -85,6 +87,8 @@ export default function ClientDetail() {
   const [invoices, setInvoices] = useState([]);
   const [invMeta, setInvMeta] = useState({ total: 0 });
   const [loading, setLoading] = useState(true);
+  const [companyProfile, setCompanyProfile] = useState(null);
+  const [generatingStatement, setGeneratingStatement] = useState(false);
 
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
@@ -103,12 +107,14 @@ export default function ClientDetail() {
     let alive = true;
     (async () => {
       try {
-        const [c, inv] = await Promise.all([
+        const [c, inv, profile] = await Promise.all([
           getClient(clientId),
-          listInvoices({ client_id: clientId, page: 1, page_size: 5, sort: "invoice_date", order: "desc" }),
+          listInvoices({ client_id: clientId, page: 1, page_size: 200, sort: "invoice_date", order: "desc" }),
+          getCompanyProfile(),
         ]);
         if (!alive) return;
         setClient(c);
+        setCompanyProfile(profile);
         setForm({
           name:             c.name ?? "",
           company:          c.company ?? "",
@@ -218,6 +224,52 @@ export default function ClientDetail() {
       showToast("error", "Delete failed.");
       setDeleting(false);
       setShowConfirm(false);
+    }
+  };
+
+  const handleGenerateStatement = async () => {
+    setGeneratingStatement(true);
+    try {
+      let companyLogoDataUrl;
+      if (companyProfile?.logo_url) {
+        try {
+          const response = await fetch(companyProfile.logo_url);
+          const blob = await response.blob();
+          companyLogoDataUrl = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.readAsDataURL(blob);
+          });
+        } catch {
+          // logo fetch failed — proceed without it
+        }
+      }
+
+      const statementData = {
+        companyName:       companyProfile?.company_name || companyProfile?.full_name || "",
+        companyEmail:      companyProfile?.company_email || companyProfile?.email || "",
+        companyAddress:    [companyProfile?.address1, companyProfile?.city, companyProfile?.state].filter(Boolean).join(", "),
+        companyLogoDataUrl,
+        clientName:        client.name,
+        clientCompany:     client.company,
+        clientEmail:       client.email,
+        clientAddress:     [client.address_line1, client.city, client.state].filter(Boolean).join(", "),
+        statementDate:     new Date().toISOString().split("T")[0],
+        currency:          "USD",
+        invoices: invoices.map((inv) => ({
+          invoice_no:   inv.invoice_no,
+          invoice_date: inv.invoice_date,
+          due_date:     inv.due_date,
+          status:       inv.status,
+          total:        Number(inv.total ?? 0),
+          amount_paid:  Number(inv.amount_paid ?? 0),
+          balance:      Math.max(0, Number(inv.total ?? 0) - Number(inv.amount_paid ?? 0)),
+        })),
+      };
+
+      generateStatementPdf(statementData);
+    } finally {
+      setGeneratingStatement(false);
     }
   };
 
@@ -463,12 +515,22 @@ export default function ClientDetail() {
             <FileText size={14} /> Invoice History
             <span className="ml-1 text-xs font-normal text-gray-400">({invMeta.total} total)</span>
           </h3>
-          <button
-            onClick={() => navigate(`/invoices/create`)}
-            className="text-xs text-blue-600 border border-blue-200 rounded px-2.5 py-1 hover:bg-blue-50"
-          >
-            + New Invoice
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleGenerateStatement}
+              disabled={generatingStatement || invoices.length === 0}
+              className="inline-flex items-center gap-1.5 text-xs text-slate-600 border border-slate-200 rounded px-2.5 py-1 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <BarChart2 size={12} />
+              {generatingStatement ? "Generating…" : "Statement"}
+            </button>
+            <button
+              onClick={() => navigate(`/invoices/create`)}
+              className="text-xs text-blue-600 border border-blue-200 rounded px-2.5 py-1 hover:bg-blue-50"
+            >
+              + New Invoice
+            </button>
+          </div>
         </div>
 
         {invoices.length === 0 ? (

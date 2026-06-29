@@ -1,11 +1,12 @@
 // src/pages/InvoiceDetail.jsx
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useParams, Link, useNavigate } from "react-router-dom";
-import { getInvoiceById, updateInvoice, voidInvoice, deleteInvoice, cloneInvoice, issueInvoice, recordPayment, adjustPayment, sendInvoiceEmail, sendReminder } from "../../api/invoices";
+import { getInvoiceById, updateInvoice, voidInvoice, deleteInvoice, cloneInvoice, issueInvoice, recordPayment, adjustPayment, sendInvoiceEmail, sendReminder, acceptQuote, getInvoiceEvents } from "../../api/invoices";
 import { getCompanyProfile, getCompanySettings } from "../../api/company";
 import { getClient } from "../../api/clients";
 import { generateInvoicePdf } from "../../utils/generateInvoicePdf";
 import DialogBox from "../../components/DialogBox";
+import FeatureGate from "../../components/FeatureGate";
 import {
   ArrowLeft,
   Download,
@@ -27,6 +28,10 @@ import {
   Trash2,
   Copy as CopyIcon,
   Send,
+  CheckCircle2,
+  FileQuestion,
+  XCircle,
+  DollarSign,
 } from "lucide-react";
 
 /* --------------------- helpers --------------------- */
@@ -40,6 +45,7 @@ const statusPill = (status) => {
   const s = (status || "INVOICE").toUpperCase();
   if (s === "VOID") return "bg-red-50 text-red-700 ring-1 ring-red-200";
   if (s === "DRAFT") return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
+  if (s === "QUOTE") return "bg-violet-50 text-violet-700 ring-1 ring-violet-200";
   return "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200";
 };
 
@@ -65,6 +71,7 @@ function normalizeCompany(companyLike) {
     zip: first(companyLike.zip_code, companyLike.postal_code, companyLike.zip),
     country: first(companyLike.country),
     logo_url: first(companyLike.logo_url),
+    terms_and_conditions: first(companyLike.terms_and_conditions),
   };
 }
 
@@ -378,6 +385,7 @@ export default function InvoiceDetail() {
       total: totalView,
       additionalInformation: inv.additional_information_raw || "",
       footerMessage: inv.footer_message || "Thank you for your business!",
+      termsAndConditions: companyUI?.terms_and_conditions || reminderConfig?.terms_template || "",
     };
   }, [
     passed,
@@ -391,6 +399,7 @@ export default function InvoiceDetail() {
     discountAmountView,
     taxView,
     totalView,
+    reminderConfig,
   ]);
 
   const handleViewPdf = async () => {
@@ -731,6 +740,7 @@ export default function InvoiceDetail() {
   const isVoid = statusUp === "VOID";
   const isDraft = statusUp === "DRAFT";
   const isInvoice = statusUp === "INVOICE";
+  const isQuote = statusUp === "QUOTE";
   const showItems = editMode ? form?.lineItems || [] : itemsView;
 
   return (
@@ -786,8 +796,47 @@ export default function InvoiceDetail() {
               </button>
             )}
 
+            {/* DRAFT (view mode) → quick Issue button */}
+            {!editMode && isDraft && (
+              <FeatureGate feature="draft_invoices">
+                <button
+                  onClick={saveAndIssue}
+                  disabled={saving}
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-60"
+                  title="Issue this invoice"
+                >
+                  <CopyIcon size={18} />
+                  <span>{saving ? "Issuing…" : "Issue Invoice"}</span>
+                </button>
+              </FeatureGate>
+            )}
+
+            {/* QUOTE → Accept → Invoice */}
+            {!editMode && isQuote && (
+              <button
+                onClick={async () => {
+                  setSaving(true);
+                  try {
+                    const issued = await acceptQuote(id);
+                    setInvoice(issued);
+                  } catch (err) {
+                    setDialogType("error");
+                    setDialogMessage("Failed to accept quote.");
+                    setDialogOpen(true);
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+                disabled={saving}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-violet-600 hover:bg-violet-700 text-white disabled:opacity-60"
+              >
+                <CheckCircle2 size={18} />
+                <span>{saving ? "Accepting…" : "Accept → Invoice"}</span>
+              </button>
+            )}
+
             {/* INVOICE → Void */}
-            {!editMode && !isVoid && !isDraft && (
+            {!editMode && !isVoid && !isDraft && !isQuote && (
               <button
                 onClick={() => askConfirm("void")}
                 className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border hover:bg-gray-50 text-amber-700"
@@ -843,7 +892,7 @@ export default function InvoiceDetail() {
             )}
 
             {/* Send by email — INVOICE only */}
-            {!isVoid && !isDraft && !editMode && (
+            {!isVoid && !isDraft && !isQuote && !editMode && (
               <button
                 onClick={() => setSendOpen(true)}
                 className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm"
@@ -872,6 +921,12 @@ export default function InvoiceDetail() {
       {isDraft && (
         <div className="p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-700 flex items-center gap-2">
           <Pencil size={16} /> This invoice is a DRAFT. You can edit and <b>Save &amp; Issue</b> to finalize with a new number.
+        </div>
+      )}
+      {!editMode && isQuote && (
+        <div className="flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-700">
+          <FileQuestion size={16} />
+          This is a <b>Quote</b>. Accept it to convert to a numbered invoice.
         </div>
       )}
 
@@ -1358,6 +1413,9 @@ export default function InvoiceDetail() {
         setDialogOpen={setDialogOpen}
       />}
 
+      {/* Activity timeline */}
+      {!editMode && <InvoiceTimeline invoiceId={id} />}
+
       {/* Danger Zone (hard delete) */}
       {!editMode && (
         <div className="p-4 bg-white rounded-2xl shadow-sm border">
@@ -1788,6 +1846,58 @@ function ReminderCard({ invoice, clientEmail, reminderConfig, sendingReminder, s
         {!clientEmail && (
           <p className="text-xs text-red-500">Client has no email — add one in client settings.</p>
         )}
+      </div>
+    </div>
+  );
+}
+
+/* ── InvoiceTimeline ─────────────────────────────────────────────── */
+function InvoiceTimeline({ invoiceId }) {
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getInvoiceEvents(invoiceId).then(setEvents).catch(() => {}).finally(() => setLoading(false));
+  }, [invoiceId]);
+
+  const EVENT_META = {
+    created:  { icon: FileText,     color: "text-gray-500",   bg: "bg-gray-100" },
+    issued:   { icon: CheckCircle2, color: "text-emerald-600",bg: "bg-emerald-100" },
+    accepted: { icon: CheckCircle2, color: "text-violet-600", bg: "bg-violet-100" },
+    voided:   { icon: XCircle,      color: "text-red-500",    bg: "bg-red-100" },
+    payment:  { icon: DollarSign,   color: "text-blue-600",   bg: "bg-blue-100" },
+    emailed:  { icon: Mail,         color: "text-indigo-500", bg: "bg-indigo-100" },
+    amended:  { icon: Pencil,       color: "text-amber-600",  bg: "bg-amber-100" },
+    cloned:   { icon: CopyIcon,     color: "text-gray-500",   bg: "bg-gray-100" },
+  };
+
+  if (loading) return <div className="text-xs text-gray-400 py-4 text-center animate-pulse">Loading activity…</div>;
+  if (!events.length) return null;
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mt-6">
+      <div className="px-5 py-4 border-b border-gray-100">
+        <p className="text-sm font-semibold text-gray-800">Activity</p>
+      </div>
+      <div className="px-5 py-4 space-y-4">
+        {events.map((ev) => {
+          const meta = EVENT_META[ev.event_type] || EVENT_META.created;
+          const Icon = meta.icon;
+          return (
+            <div key={ev.id} className="flex items-start gap-3">
+              <div className={`mt-0.5 h-7 w-7 rounded-full flex items-center justify-center shrink-0 ${meta.bg}`}>
+                <Icon size={13} className={meta.color} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-gray-800 capitalize">{ev.event_type}{ev.description ? ` — ${ev.description}` : ""}</p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {ev.created_by && <span className="font-medium">{ev.created_by} · </span>}
+                  {new Date(ev.created_at).toLocaleString()}
+                </p>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

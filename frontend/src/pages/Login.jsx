@@ -20,8 +20,6 @@ export default function Login() {
     if (ready && token && user) {
       if (user.must_change_password) {
         navigate("/set-password", { replace: true });
-      } else if (user.role === "super_admin") {
-        navigate("/admin", { replace: true });
       } else {
         navigate("/dashboard", { replace: true });
       }
@@ -43,8 +41,6 @@ export default function Login() {
         setToken(access);
         if (res.must_change_password) {
           navigate("/set-password", { replace: true });
-        } else if (res.user?.role === "super_admin") {
-          navigate("/admin", { replace: true });
         } else {
           navigate("/dashboard", { replace: true });
         }

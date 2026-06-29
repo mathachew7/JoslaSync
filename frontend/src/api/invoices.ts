@@ -180,7 +180,7 @@ export const getInvoice = getInvoiceById;
 /** Paginated list with filters/search/sort */
 export function listInvoices(params?: {
   client_id?: UUID;
-  status?: "INVOICE" | "VOID" | "DRAFT";
+  status?: "INVOICE" | "VOID" | "DRAFT" | "QUOTE";
   page?: number;
   page_size?: number;
   /** free-text search across invoice_no, client name, etc. */
@@ -188,8 +188,11 @@ export function listInvoices(params?: {
   /** ISO date range filter on invoice_date */
   date_from?: string;    // "YYYY-MM-DD"
   date_to?: string;      // "YYYY-MM-DD"
+  /** ISO filter on due_date */
+  due_before?: string;   // "YYYY-MM-DD" — invoices with due_date before this
+  due_after?: string;    // "YYYY-MM-DD" — invoices with due_date after this
   /** sorting */
-  sort?: "invoice_date" | "created_at" | "total" | "invoice_no";
+  sort?: "invoice_date" | "created_at" | "total" | "invoice_no" | "due_date";
   order?: "asc" | "desc";
 }) {
   return api.get<Paginated<InvoiceRead>>("/api/invoices", { params }).then(r => r.data);
@@ -199,6 +202,18 @@ export function listInvoices(params?: {
 export function issueInvoice(id: UUID) {
   return api.post<InvoiceRead>(`/api/invoices/${id}/issue`).then(r => r.data);
 }
+
+/** Accept a QUOTE, converting it to a numbered INVOICE */
+export const acceptQuote = async (id: string | number) => {
+  const { data } = await api.post(`/api/invoices/${id}/accept`);
+  return data;
+};
+
+/** Fetch the activity/event log for an invoice */
+export const getInvoiceEvents = async (id: string | number) => {
+  const { data } = await api.get(`/api/invoices/${id}/events`);
+  return data as Array<{id: number; event_type: string; description: string | null; created_by: string | null; created_at: string}>;
+};
 
 /** Void an invoice (immutability policy) */
 export function voidInvoice(id: UUID) {

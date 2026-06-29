@@ -77,3 +77,23 @@ class TenantStatusUpdate(BaseModel):
 class ResetPasswordResponse(BaseModel):
     user: TenantUserRead
     temp_password: str
+
+
+class FeatureFlagUpdate(BaseModel):
+    feature_key: str
+    enabled: bool
+
+    @field_validator("feature_key")
+    @classmethod
+    def _valid_key(cls, v: str) -> str:
+        from app.db.models.master.tenant_features import VALID_FEATURES
+        if v not in VALID_FEATURES:
+            raise ValueError(f"feature_key must be one of {sorted(VALID_FEATURES)}")
+        return v
+
+
+class TenantFeaturesOut(BaseModel):
+    draft_invoices: bool = True
+    recurring_invoices: bool = True
+    multi_user: bool = True
+    email_reminders: bool = True

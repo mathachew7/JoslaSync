@@ -55,6 +55,41 @@ interface InvoiceData {
 
   additionalInformation?: string;
   status?: string; // <- STATUS (e.g., "Invoice", "Estimate") shown in header, distinct from invoiceTitle
+  termsAndConditions?: string; // overrides default boilerplate if provided
+}
+
+export function getDefaultTerms(companyName: string, companyEmail: string): string {
+  return `${companyName}
+
+These Terms & Conditions govern your use of our services, including software development, website design, brand development, and IT services. By engaging with our services you agree to comply with these Terms & Conditions.
+
+Services: ${companyName} provides software, websites, brand development, and IT services. The scope of services will be outlined in a separate agreement or project proposal.
+
+1. Payment Terms
+- Invoices are issued upon project milestones or as agreed.
+- Payment is due within 5 days from the invoice date.
+- Late payments may incur a 1.5% monthly late fee.
+
+2. Intellectual Property
+All intellectual property rights remain with ${companyName} until full payment is received. Upon full payment, rights transfer to the client as per the agreement.
+
+3. Confidentiality
+We will keep all client information confidential and will not disclose details without prior written consent, except as required by law.
+
+4. Liability
+${companyName} is not liable for indirect, incidental, or consequential damages from our services. Liability is limited to the amount paid for the service.
+
+5. Termination
+Either party may terminate with 30 days written notice. The client agrees to pay for all work completed up to the termination date.
+
+6. Governing Law
+These Terms & Conditions are governed by the laws of the applicable jurisdiction. Disputes are subject to the exclusive jurisdiction of local courts.
+
+7. Contact Information
+For questions or concerns, contact us at: ${companyEmail}
+
+8. Amendments
+${companyName} reserves the right to amend these Terms & Conditions at any time. Clients will be notified of changes.`;
 }
 
 /**
@@ -486,39 +521,9 @@ export const generateInvoicePdf = (data: InvoiceData, opts?: { returnDoc?: boole
   const termsCompany = companyName;
   const termsEmail = companyEmail;
 
-  const termsContent = `
-${termsCompany}
-
-These Terms & Conditions govern your use of our services, including software development, website design, brand development, and IT services. By engaging with our services you agree to comply with these Terms & Conditions.
-
-Services: ${termsCompany} provides software, websites, brand development, and IT services. The scope of services will be outlined in a separate agreement or project proposal.
-
-1. Payment Terms
-- Invoices are issued upon project milestones or as agreed.
-- Payment is due within 5 days from the invoice date.
-- Late payments may incur a 1.5% monthly late fee.
-
-2. Intellectual Property
-All intellectual property rights remain with ${termsCompany} until full payment is received. Upon full payment, rights transfer to the client as per the agreement.
-
-3. Confidentiality
-We will keep all client information confidential and will not disclose details without prior written consent, except as required by law.
-
-4. Liability
-${termsCompany} is not liable for indirect, incidental, or consequential damages from our services. Liability is limited to the amount paid for the service.
-
-5. Termination
-Either party may terminate with 30 days written notice. The client agrees to pay for all work completed up to the termination date.
-
-6. Governing Law
-These Terms & Conditions are governed by the laws of Missouri, USA. Disputes are subject to the exclusive jurisdiction of Missouri courts.
-
-7. Contact Information
-For questions or concerns, contact us at: ${termsEmail}
-
-8. Amendments
-${termsCompany} reserves the right to amend these Terms & Conditions at any time. Clients will be notified of changes.
-  `;
+  const termsContent: string = data.termsAndConditions?.trim()
+    ? data.termsAndConditions.trim()
+    : getDefaultTerms(termsCompany, termsEmail);
   const splitText = doc.splitTextToSize(termsContent, pageWidth - 2 * marginX);
   doc.text(splitText, marginX, currentY);
 
