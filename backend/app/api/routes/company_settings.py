@@ -45,6 +45,7 @@ async def put_settings(
 
     # Optional form fields
     legal_name: Optional[str] = Form(default=None),
+    company_type: Optional[str] = Form(default=None),
     addr1: Optional[str] = Form(default=None),
     addr2: Optional[str] = Form(default=None),
     city: Optional[str] = Form(default=None),
@@ -83,6 +84,7 @@ async def put_settings(
     payload = {}
     for k, v in {
         "legal_name": legal_name,
+        "company_type": company_type,
         "addr1": addr1,
         "addr2": addr2,
         "city": city,

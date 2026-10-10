@@ -9,6 +9,7 @@ class CompanySettings(Base):
 
     # Identity / branding
     legal_name = Column(String(255), nullable=False, default="Josla Tech LLC")
+    company_type = Column(String(64), nullable=True)
     addr1 = Column(String(255))
     addr2 = Column(String(255))
     city = Column(String(100))

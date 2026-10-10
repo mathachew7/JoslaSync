@@ -88,6 +88,7 @@ def _migrate_tenant_columns(engine) -> None:
         "ALTER TABLE company_profile ADD COLUMN IF NOT EXISTS terms_and_conditions TEXT",
         # created_by_user_id was originally UUID; user IDs are integers sent as strings
         "ALTER TABLE invoices ALTER COLUMN created_by_user_id TYPE VARCHAR(64) USING created_by_user_id::text",
+        "ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS company_type VARCHAR(64)",
     ]
     with engine.connect() as conn:
         for sql in migrations:

@@ -87,3 +87,23 @@ export const updateInvoiceSettings = async (settings: Partial<InvoiceSettings>):
   if (settings.terms_template !== undefined) fd.append("terms_template", settings.terms_template);
   await API.put("/api/company/settings", fd);
 };
+
+export const COMPANY_TYPES = [
+  { value: "IT_SOFTWARE", label: "IT / Software & Tech Services" },
+  { value: "CONSULTING", label: "Consulting / Professional Services" },
+  { value: "CREATIVE_MARKETING", label: "Creative / Design & Marketing" },
+  { value: "RETAIL_ECOMMERCE", label: "Retail / E-commerce (Goods)" },
+  { value: "CONSTRUCTION_TRADES", label: "Construction / Contracting / Trades" },
+  { value: "GENERAL_OTHER", label: "General / Other Services" },
+] as const;
+
+export const updateCompanyType = async (
+  companyType: string,
+  legalName?: string
+): Promise<{ company_type: string; terms_template: string } & Record<string, unknown>> => {
+  const fd = new FormData();
+  fd.append("company_type", companyType);
+  if (legalName) fd.append("legal_name", legalName);
+  const { data } = await API.put("/api/company/settings", fd);
+  return data;
+};

@@ -6,8 +6,19 @@ from datetime import datetime
 from pydantic import BaseModel, EmailStr, Field, validator
 
 
+COMPANY_TYPES = (
+    "IT_SOFTWARE",
+    "CONSULTING",
+    "CREATIVE_MARKETING",
+    "RETAIL_ECOMMERCE",
+    "CONSTRUCTION_TRADES",
+    "GENERAL_OTHER",
+)
+
+
 class CompanySettingsBase(BaseModel):
     legal_name: str = Field(default="Josla Tech LLC", max_length=255)
+    company_type: Optional[str] = Field(default=None, max_length=64)
     addr1: Optional[str] = Field(default=None, max_length=255)
     addr2: Optional[str] = Field(default=None, max_length=255)
     city: Optional[str] = Field(default=None, max_length=100)
@@ -43,6 +54,12 @@ class CompanySettingsBase(BaseModel):
     reminder_enabled: bool = False
     reminder_frequency_days: int = 7
     reminder_max_count: int = 3
+
+    @validator("company_type")
+    def _company_type(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in COMPANY_TYPES:
+            raise ValueError(f"company_type must be one of {list(COMPANY_TYPES)}")
+        return v
 
     @validator("brand_primary_hex")
     def _hex(cls, v: str) -> str:

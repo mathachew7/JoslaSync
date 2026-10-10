@@ -32,7 +32,7 @@ function RequireSuperAdmin({ children }) {
 }
 
 export default function AppRoutes() {
-  const { ready, token, user } = useAuth();
+  const { ready, token, user, setupComplete } = useAuth();
   const location = useLocation();
 
   if (!ready) {
@@ -45,15 +45,31 @@ export default function AppRoutes() {
 
   const isLoggedIn = !!token;
 
+  // setupComplete resolves asynchronously right after login/bootstrap — avoid
+  // a flash-redirect-then-flash-back by waiting the brief moment it's null.
+  if (isLoggedIn && setupComplete === null) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-50">
+        <div className="text-sm text-gray-400 animate-pulse">Loading workspace…</div>
+      </div>
+    );
+  }
+
   if (isLoggedIn && user?.must_change_password && location.pathname !== "/set-password") {
     return <Navigate to="/set-password" replace />;
   }
 
+  if (isLoggedIn && !user?.must_change_password && setupComplete === false && location.pathname !== "/setup") {
+    return <Navigate to="/setup" replace />;
+  }
+
+  const homePath = getHomePath(user);
+
   return (
     <Routes>
       {/* Public routes */}
-      <Route path="/" element={isLoggedIn ? <Navigate to="/dashboard" replace /> : <Login />} />
-      <Route path="/login" element={isLoggedIn ? <Navigate to="/dashboard" replace /> : <Login />} />
+      <Route path="/" element={isLoggedIn ? <Navigate to={homePath} replace /> : <Login />} />
+      <Route path="/login" element={isLoggedIn ? <Navigate to={homePath} replace /> : <Login />} />
       <Route path="/health" element={<Health />} />
 
       {isLoggedIn && <Route path="/set-password" element={<SetPassword />} />}
@@ -80,7 +96,7 @@ export default function AppRoutes() {
           <Route path="/admin/tenants/new" element={<RequireSuperAdmin><CreateTenant /></RequireSuperAdmin>} />
           <Route path="/admin/tenants/:id" element={<RequireSuperAdmin><TenantDetail /></RequireSuperAdmin>} />
 
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<Navigate to={homePath} replace />} />
         </Route>
       ) : (
         <Route path="*" element={<Navigate to="/login" replace />} />

@@ -11,7 +11,21 @@ from app.db.models.master.tenant_features import TenantFeature, VALID_FEATURES, 
 from app.repositories.auth_repo import AuthRepository
 from app.repositories.company_profile_repo import CompanyProfileRepository
 from app.utils.security import hash_password
-from app.db.database import create_tenant_database_if_missing, ensure_tenant_tables
+from app.db.database import create_tenant_database_if_missing, ensure_tenant_tables, get_tenant_session
+from app.db.models.tenant.company_settings import CompanySettings
+
+
+def _is_setup_complete(db_name: str) -> bool:
+    """Onboarding sets company_type as its last step — its presence in the
+    tenant's own DB is the signal the admin list uses to show who's still
+    mid-setup. Best-effort: a tenant DB hiccup shouldn't break the whole list."""
+    try:
+        Session = get_tenant_session(db_name)
+        with Session() as db:
+            settings = db.query(CompanySettings).first()
+            return bool(settings and settings.company_type)
+    except Exception:
+        return False
 
 
 def _tenant_read(company, users) -> TenantRead:
@@ -23,6 +37,7 @@ def _tenant_read(company, users) -> TenantRead:
         created_at=company.created_at,
         updated_at=company.updated_at,
         users=[TenantUserRead.model_validate(u) for u in users],
+        setup_complete=_is_setup_complete(company.db_name),
     )
 
 
@@ -66,7 +81,7 @@ class AdminService:
         # Derive username: use as-is if not email, else take local part
         identifier = body.username_or_email
         username = identifier.split("@")[0] if "@" in identifier else identifier
-        email = identifier if "@" in identifier else f"{identifier}@placeholder.local"
+        email = identifier if "@" in identifier else f"{identifier}@no-email.joslazip.com"
 
         hashed = hash_password(body.temp_password)
         user = self.auth_repo.create_tenant_user(
@@ -107,7 +122,7 @@ class AdminService:
 
         identifier = username_or_email
         username = identifier.split("@")[0] if "@" in identifier else identifier
-        email = identifier if "@" in identifier else f"{identifier}@placeholder.local"
+        email = identifier if "@" in identifier else f"{identifier}@no-email.joslazip.com"
 
         hashed = hash_password(temp_password)
         self.auth_repo.create_tenant_user(

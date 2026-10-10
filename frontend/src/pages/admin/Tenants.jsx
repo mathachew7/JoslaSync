@@ -19,6 +19,20 @@ function StatusBadge({ status }) {
   );
 }
 
+function SetupBadge({ complete }) {
+  return complete ? (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 text-emerald-700 px-2.5 py-0.5 text-xs font-medium">
+      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+      Complete
+    </span>
+  ) : (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 text-amber-700 px-2.5 py-0.5 text-xs font-medium">
+      <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+      Pending
+    </span>
+  );
+}
+
 export default function Tenants() {
   const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -136,7 +150,7 @@ export default function Tenants() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                {["#", "Company", "Database", "Users", "Status", "Created", "Updated", ""].map(h => (
+                {["#", "Company", "Database", "Users", "Status", "Setup", "Created", "Updated", ""].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -162,6 +176,7 @@ export default function Tenants() {
                     </span>
                   </td>
                   <td className="px-4 py-3.5"><StatusBadge status={t.status} /></td>
+                  <td className="px-4 py-3.5"><SetupBadge complete={t.setup_complete} /></td>
                   <td className="px-4 py-3.5 text-gray-400 text-xs whitespace-nowrap">{new Date(t.created_at).toLocaleDateString()}</td>
                   <td className="px-4 py-3.5 text-gray-400 text-xs whitespace-nowrap">
                     {t.updated_at ? new Date(t.updated_at).toLocaleDateString() : "—"}

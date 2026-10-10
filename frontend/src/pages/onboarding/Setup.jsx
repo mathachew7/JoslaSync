@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Building2, Loader2, Camera, Check } from "lucide-react";
+import { Building2, Loader2, Camera, Check, ArrowRight, ArrowLeft, FileText } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
-import { getCompanyProfile, updateCompanyProfile } from "../../api/company";
+import { getCompanyProfile, updateCompanyProfile, updateCompanyType, COMPANY_TYPES } from "../../api/company";
 import { parseApiError } from "../../utils/parseApiError";
 
 const STATE_TAX = {
@@ -11,12 +11,14 @@ const STATE_TAX = {
 };
 
 export default function Setup() {
-  const { user, company: authCompany } = useAuth();
+  const { user, company: authCompany, markSetupComplete } = useAuth();
   const navigate = useNavigate();
 
+  const [step, setStep] = useState(1);
   const [booting, setBooting] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [termsPreview, setTermsPreview] = useState("");
 
   const [form, setForm] = useState({
     company_name:   "",
@@ -29,6 +31,7 @@ export default function Setup() {
     state:          "",
     zip_code:       "",
     tax_rate:       "",
+    company_type:   "",
   });
   const [logoFile, setLogoFile]       = useState(null);
   const [logoPreview, setLogoPreview] = useState(null);
@@ -37,16 +40,15 @@ export default function Setup() {
   useEffect(() => {
     if (!user) return;
 
-    // Seed defaults from auth context (master DB company name + user email)
     const seed = {
       company_name:  authCompany?.company_name || "",
       company_email: user.email || "",
     };
 
-    // Try to load existing tenant profile (may already have more data)
     getCompanyProfile()
       .then((p) => {
-        setForm({
+        setForm((prev) => ({
+          ...prev,
           company_name:   p.company_name   || seed.company_name,
           company_email:  p.company_email  || seed.company_email,
           company_mobile: p.company_mobile || "",
@@ -57,11 +59,10 @@ export default function Setup() {
           state:          p.state          || "",
           zip_code:       p.zip_code       || "",
           tax_rate:       p.tax_rate != null ? String(p.tax_rate) : "",
-        });
+        }));
         if (p.logo_url) setLogoPreview(p.logo_url);
       })
       .catch(() => {
-        // No tenant profile yet — use seed defaults
         setForm((prev) => ({ ...prev, ...seed }));
       })
       .finally(() => setBooting(false));
@@ -84,7 +85,9 @@ export default function Setup() {
     setLogoPreview(URL.createObjectURL(f));
   };
 
-  const handleSubmit = async (e) => {
+  // Step 1 -> Step 2: save the profile, set the company type, and fetch the
+  // matching T&C preview that was generated server-side for that type.
+  const handleNext = async (e) => {
     e.preventDefault();
     setError("");
     setSaving(true);
@@ -92,14 +95,24 @@ export default function Setup() {
       const fd = new FormData();
       if (logoFile) fd.append("logoFile", logoFile);
       Object.entries(form).forEach(([k, v]) => {
+        if (k === "company_type") return; // lives on company_settings, not company_profile
         if (v !== "" && v !== null && v !== undefined) fd.append(k, String(v));
       });
       await updateCompanyProfile(fd);
-      navigate("/dashboard", { replace: true });
+
+      const settings = await updateCompanyType(form.company_type, form.company_name);
+      setTermsPreview(settings.terms_template || "");
+      setStep(2);
     } catch (err) {
       setError(parseApiError(err, "Failed to save. Please try again."));
+    } finally {
       setSaving(false);
     }
+  };
+
+  const handleComplete = () => {
+    markSetupComplete();
+    navigate("/dashboard", { replace: true });
   };
 
   if (booting) {
@@ -122,106 +135,168 @@ export default function Setup() {
           <p className="text-sm text-gray-500 mt-1">Set up your company profile</p>
         </div>
 
-        <div className="bg-white/80 backdrop-blur-xl rounded-3xl border border-white/60 shadow-xl p-8">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="h-10 w-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-sm">
-              <Building2 className="text-white" size={20} />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-gray-900">Company Setup</h2>
-              <p className="text-sm text-gray-500">This appears on all your invoices.</p>
-            </div>
-          </div>
-
-          {error && (
-            <div className="mb-5 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
-              {error}
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Logo */}
-            <div className="flex items-center gap-4 mb-2">
+        {/* Step indicator */}
+        <div className="flex items-center justify-center gap-2 mb-6">
+          {[1, 2].map((s) => (
+            <div key={s} className="flex items-center gap-2">
               <div
-                onClick={() => fileRef.current?.click()}
-                className="h-16 w-16 rounded-xl border-2 border-dashed border-gray-300 cursor-pointer hover:border-blue-400 transition flex items-center justify-center overflow-hidden bg-gray-50 shrink-0"
+                className={`h-7 w-7 rounded-full flex items-center justify-center text-xs font-semibold ${
+                  step === s ? "bg-blue-600 text-white" : step > s ? "bg-blue-100 text-blue-600" : "bg-gray-200 text-gray-400"
+                }`}
               >
-                {logoPreview
-                  ? <img src={logoPreview} alt="logo" className="h-full w-full object-cover" />
-                  : <Camera size={20} className="text-gray-400" />}
+                {s}
               </div>
-              <div>
-                <button type="button" onClick={() => fileRef.current?.click()}
-                  className="text-sm text-blue-600 hover:underline font-medium">
-                  {logoPreview ? "Change logo" : "Upload logo"}
+              {s === 1 && <div className={`h-0.5 w-8 ${step > 1 ? "bg-blue-400" : "bg-gray-200"}`} />}
+            </div>
+          ))}
+        </div>
+
+        <div className="bg-white/80 backdrop-blur-xl rounded-3xl border border-white/60 shadow-xl p-8">
+          {step === 1 ? (
+            <>
+              <div className="flex items-center gap-3 mb-6">
+                <div className="h-10 w-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-sm">
+                  <Building2 className="text-white" size={20} />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">Company Setup</h2>
+                  <p className="text-sm text-gray-500">This appears on all your invoices.</p>
+                </div>
+              </div>
+
+              {error && (
+                <div className="mb-5 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+                  {error}
+                </div>
+              )}
+
+              <form onSubmit={handleNext} className="space-y-4">
+                {/* Logo */}
+                <div className="flex items-center gap-4 mb-2">
+                  <div
+                    onClick={() => fileRef.current?.click()}
+                    className="h-16 w-16 rounded-xl border-2 border-dashed border-gray-300 cursor-pointer hover:border-blue-400 transition flex items-center justify-center overflow-hidden bg-gray-50 shrink-0"
+                  >
+                    {logoPreview
+                      ? <img src={logoPreview} alt="logo" className="h-full w-full object-cover" />
+                      : <Camera size={20} className="text-gray-400" />}
+                  </div>
+                  <div>
+                    <button type="button" onClick={() => fileRef.current?.click()}
+                      className="text-sm text-blue-600 hover:underline font-medium">
+                      {logoPreview ? "Change logo" : "Upload logo"}
+                    </button>
+                    <p className="text-xs text-gray-400 mt-0.5">JPG or PNG</p>
+                  </div>
+                  <input ref={fileRef} type="file" accept="image/png,image/jpeg" onChange={handleLogoChange} className="hidden" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <Field label="Company Type" span>
+                    <select required value={form.company_type} onChange={set("company_type")} className={inp}>
+                      <option value="">Select company type</option>
+                      {COMPANY_TYPES.map((t) => (
+                        <option key={t.value} value={t.value}>{t.label}</option>
+                      ))}
+                    </select>
+                  </Field>
+
+                  <Field label="Company Name" span>
+                    <input required value={form.company_name} onChange={set("company_name")}
+                      className={inp} placeholder="Acme Corp" />
+                  </Field>
+
+                  <Field label="Your Full Name" span>
+                    <input required value={form.full_name} onChange={set("full_name")}
+                      className={inp} placeholder="Jane Smith" />
+                  </Field>
+
+                  <Field label="Company Email">
+                    <input type="email" required value={form.company_email} onChange={set("company_email")}
+                      className={inp} placeholder="billing@acme.com" />
+                  </Field>
+
+                  <Field label="Phone (10 digits)">
+                    <input required value={form.company_mobile} onChange={set("company_mobile")}
+                      className={inp} placeholder="9876543210" maxLength={10} />
+                  </Field>
+
+                  <Field label="Address Line 1" span>
+                    <input value={form.address1} onChange={set("address1")}
+                      className={inp} placeholder="123 Main St" />
+                  </Field>
+
+                  <Field label="Address Line 2" span>
+                    <input value={form.address2} onChange={set("address2")}
+                      className={inp} placeholder="Suite 100 (optional)" />
+                  </Field>
+
+                  <Field label="City">
+                    <input value={form.city} onChange={set("city")} className={inp} placeholder="New York" />
+                  </Field>
+
+                  <Field label="Zip Code">
+                    <input value={form.zip_code} maxLength={5} onChange={set("zip_code")}
+                      className={inp} placeholder="10001" />
+                  </Field>
+
+                  <Field label="State">
+                    <select value={form.state} onChange={(e) => handleStateChange(e.target.value)} className={inp}>
+                      <option value="">Select state</option>
+                      {Object.keys(STATE_TAX).map((s) => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </Field>
+
+                  <Field label="Tax Rate (%)">
+                    <input type="number" step="0.01" value={form.tax_rate} onChange={set("tax_rate")}
+                      className={inp} placeholder="Auto from state" />
+                  </Field>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 mt-2 transition disabled:opacity-60"
+                >
+                  {saving ? <Loader2 size={16} className="animate-spin" /> : <ArrowRight size={16} />}
+                  {saving ? "Saving…" : "Next"}
                 </button>
-                <p className="text-xs text-gray-400 mt-0.5">JPG or PNG</p>
+              </form>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-3 mb-6">
+                <div className="h-10 w-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-sm">
+                  <FileText className="text-white" size={20} />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">Your Terms & Conditions</h2>
+                  <p className="text-sm text-gray-500">Generated for your company type — you can edit this anytime.</p>
+                </div>
               </div>
-              <input ref={fileRef} type="file" accept="image/png,image/jpeg" onChange={handleLogoChange} className="hidden" />
-            </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="Company Name" span>
-                <input required value={form.company_name} onChange={set("company_name")}
-                  className={inp} placeholder="Acme Corp" />
-              </Field>
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 max-h-80 overflow-y-auto text-xs text-gray-700 whitespace-pre-wrap font-mono">
+                {termsPreview}
+              </div>
 
-              <Field label="Your Full Name" span>
-                <input required value={form.full_name} onChange={set("full_name")}
-                  className={inp} placeholder="Jane Smith" />
-              </Field>
-
-              <Field label="Company Email">
-                <input type="email" required value={form.company_email} onChange={set("company_email")}
-                  className={inp} placeholder="billing@acme.com" />
-              </Field>
-
-              <Field label="Phone (10 digits)">
-                <input required value={form.company_mobile} onChange={set("company_mobile")}
-                  className={inp} placeholder="9876543210" maxLength={10} />
-              </Field>
-
-              <Field label="Address Line 1" span>
-                <input value={form.address1} onChange={set("address1")}
-                  className={inp} placeholder="123 Main St" />
-              </Field>
-
-              <Field label="Address Line 2" span>
-                <input value={form.address2} onChange={set("address2")}
-                  className={inp} placeholder="Suite 100 (optional)" />
-              </Field>
-
-              <Field label="City">
-                <input value={form.city} onChange={set("city")} className={inp} placeholder="New York" />
-              </Field>
-
-              <Field label="Zip Code">
-                <input value={form.zip_code} maxLength={5} onChange={set("zip_code")}
-                  className={inp} placeholder="10001" />
-              </Field>
-
-              <Field label="State">
-                <select value={form.state} onChange={(e) => handleStateChange(e.target.value)} className={inp}>
-                  <option value="">Select state</option>
-                  {Object.keys(STATE_TAX).map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </Field>
-
-              <Field label="Tax Rate (%)">
-                <input type="number" step="0.01" value={form.tax_rate} onChange={set("tax_rate")}
-                  className={inp} placeholder="Auto from state" />
-              </Field>
-            </div>
-
-            <button
-              type="submit"
-              disabled={saving}
-              className="w-full flex items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 mt-2 transition disabled:opacity-60"
-            >
-              {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-              {saving ? "Saving…" : "Complete Setup"}
-            </button>
-          </form>
+              <div className="flex gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setStep(1)}
+                  className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-gray-200 text-gray-600 font-semibold py-3 hover:bg-gray-50 transition"
+                >
+                  <ArrowLeft size={16} /> Back
+                </button>
+                <button
+                  type="button"
+                  onClick={handleComplete}
+                  className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 transition"
+                >
+                  <Check size={16} /> Complete Setup
+                </button>
+              </div>
+            </>
+          )}
         </div>
 
         <p className="text-center text-xs text-gray-400 mt-6">

@@ -51,6 +51,7 @@ class TenantRead(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime] = None
     users: List[TenantUserRead] = []
+    setup_complete: bool = False
     model_config = ConfigDict(from_attributes=True)
 
 
