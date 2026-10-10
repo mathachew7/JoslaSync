@@ -18,7 +18,7 @@ def get_own_features(
 ):
     """Return the feature flags enabled for the calling user's company."""
     logger.info(f"➡️ GET /company/features | user={user.get('username')}")
-    company_id = user.get("company_id") or user.get("id")
+    company_id = user.get("company_id")
     if not company_id:
         return TenantFeaturesOut()
 
