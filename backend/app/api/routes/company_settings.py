@@ -123,16 +123,16 @@ async def put_settings(
     if logo is not None:
         try:
             payload["logo_url"] = save_logo_file(logo)
-        except Exception as e:
+        except Exception:
             log.exception("Logo upload failed")
-            raise HTTPException(status_code=400, detail=f"Logo upload failed: {e}")
+            raise HTTPException(status_code=400, detail="Logo upload failed.")
 
     if signature is not None:
         try:
             payload["signature_url"] = save_signature_file(signature)
-        except Exception as e:
+        except Exception:
             log.exception("Signature upload failed")
-            raise HTTPException(status_code=400, detail=f"Signature upload failed: {e}")
+            raise HTTPException(status_code=400, detail="Signature upload failed.")
 
     ok, data_or_err = validate_company_settings(payload)
     if not ok:

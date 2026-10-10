@@ -85,7 +85,9 @@ def delete_client(
 # ── Master-only: view deleted clients ────────────────────────────────────────
 
 def _require_master(user: dict):
-    db_name = user.get("db_name", "")
+    # get_current_user returns the tenant db under "db", not "db_name" —
+    # this always evaluated to "" and 403'd for everyone, including master.
+    db_name = user.get("db", "")
     if db_name != settings.MASTER_DB_NAME:
         raise HTTPException(status_code=403, detail="Master access required.")
 

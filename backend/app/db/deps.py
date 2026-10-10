@@ -91,6 +91,6 @@ def get_company_db(request: Request, claims: Dict = Depends(get_token_claims)) -
         raise  # let FastAPI handle 4xx responses from route handlers normally
     except Exception as exc:
         logger.exception(f"❌ Tenant DB error [{db_name}]: {exc}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Server error: {exc}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Server error. Please try again.")
     finally:
         db.close()

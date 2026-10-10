@@ -104,7 +104,6 @@ def update_settings(db: Session, data: CompanySettingsUpdate) -> CompanySettings
     settings = get_or_create_settings(db)
     for field, value in data.dict(exclude_unset=True).items():
         setattr(settings, field, value)
-    settings.touch()
     db.add(settings)
     db.commit()
     db.refresh(settings)

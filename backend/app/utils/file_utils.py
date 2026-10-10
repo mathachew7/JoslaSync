@@ -1,27 +1,14 @@
 # app/utils/file_utils.py
 import os
-import shutil
-from fastapi import UploadFile
-from app.core.logger import logger
-import os
 import uuid
-from fastapi import UploadFile
+from fastapi import UploadFile, HTTPException
 
 STATIC_ROOT = os.getenv("STATIC_ROOT", "static")
 LOGO_DIR = os.path.join(STATIC_ROOT, "logos")
 SIGN_DIR = os.path.join(STATIC_ROOT, "signatures")
 
-
-UPLOAD_DIR = "static/logos"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-def save_logo_file(logoFile: UploadFile) -> str:
-    logo_filename = logoFile.filename
-    logo_path = os.path.join(UPLOAD_DIR, logo_filename)
-    with open(logo_path, "wb") as buffer:
-        shutil.copyfileobj(logoFile.file, buffer)
-    logger.info(f"Logo saved at {logo_path}")
-    return f"/{logo_path}"
+ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB
 
 
 def _ensure_static_dirs() -> None:
@@ -32,11 +19,18 @@ def _ensure_static_dirs() -> None:
 def _save_upload(file: UploadFile, dest_dir: str, web_prefix: str) -> str:
     _ensure_static_dirs()
     _, ext = os.path.splitext(file.filename or "")
-    ext = (ext or ".png").lower()
+    ext = ext.lower()
+    if ext not in ALLOWED_IMAGE_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Unsupported file type. Use PNG, JPG, GIF, or WEBP.")
+
+    contents = file.file.read(MAX_UPLOAD_BYTES + 1)
+    if len(contents) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=400, detail="File too large (max 5 MB).")
+
     fname = f"{uuid.uuid4().hex}{ext}"
     fpath = os.path.join(dest_dir, fname)
     with open(fpath, "wb") as out:
-        out.write(file.file.read())
+        out.write(contents)
     return f"/static/{web_prefix}/{fname}"
 
 
