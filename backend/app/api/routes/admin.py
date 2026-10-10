@@ -1,9 +1,10 @@
 # app/api/routes/admin.py
+from collections import deque
 from typing import List
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from app.core.logger import logger
+from app.core.logger import logger, LOG_FILE
 from app.db.database import get_db
 from app.db.deps import require_super_admin
 from app.schemas.admin import (
@@ -14,6 +15,25 @@ from app.services.admin_service import AdminService
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 service = AdminService()
+
+
+@router.get("/logs")
+def get_logs(
+    lines: int = Query(200, ge=1, le=2000),
+    _: dict = Depends(require_super_admin),
+):
+    """
+    Tail the backend's own rotating log file. This is the same file the
+    stdout handler mirrors to `docker logs` — reading it directly here means
+    an admin doesn't need separate access to the server or Coolify to see
+    what the backend has been doing recently.
+    """
+    try:
+        with open(LOG_FILE, "r", errors="replace") as f:
+            tail = deque(f, maxlen=lines)
+        return {"lines": [line.rstrip("\n") for line in tail]}
+    except OSError as e:
+        return {"lines": [], "error": str(e)}
 
 
 @router.post("/users/{user_id}/reset-password", response_model=ResetPasswordResponse)

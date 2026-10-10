@@ -2,7 +2,11 @@
 import os
 from datetime import datetime, timezone
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from app.db.database import get_db
 
 from .auth import router as auth_router
 from .admin import router as admin_router
@@ -26,12 +30,27 @@ except OSError:
 
 
 @api_router.get("/health", tags=["Health"])
-def health():
-    """Public, unauthenticated — live reachability check for the status indicator on the login page."""
+def health(db: Session = Depends(get_db)):
+    """Public, unauthenticated — live reachability check for the status page / login indicator."""
     now = datetime.now(timezone.utc)
+
+    try:
+        db.execute(text("SELECT 1"))
+        db_status = "ok"
+    except Exception:
+        db_status = "down"
+
+    components = [
+        {"name": "API", "status": "ok"},
+        {"name": "Database", "status": db_status},
+    ]
+    overall = "ok" if all(c["status"] == "ok" for c in components) else "degraded"
+
     return {
-        "status": "ok",
+        "status": overall,
+        "components": components,
         "time": now.isoformat(),
+        "started_at": _started_at.isoformat(),
         "uptime_seconds": int((now - _started_at).total_seconds()),
         "version": _VERSION,
     }

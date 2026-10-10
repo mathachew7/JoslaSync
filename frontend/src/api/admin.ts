@@ -106,3 +106,8 @@ export async function updateTenantFeature(
   });
   return data;
 }
+
+export async function getAdminLogs(lines = 200): Promise<{ lines: string[]; error?: string }> {
+  const { data } = await API.get("/api/admin/logs", { params: { lines } });
+  return data;
+}

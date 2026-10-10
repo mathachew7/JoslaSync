@@ -23,6 +23,7 @@ import CreateTenant   from "../pages/admin/CreateTenant";
 import TenantDetail   from "../pages/admin/TenantDetail";
 
 import { useAuth } from "../context/AuthContext";
+import { getHomePath } from "../utils/homePath";
 
 function RequireSuperAdmin({ children }) {
   const { user, ready } = useAuth();

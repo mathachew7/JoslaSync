@@ -5,6 +5,7 @@ import { login } from "../api/auth";
 import { useAuth } from "../context/AuthContext";
 import { parseApiError } from "../utils/parseApiError";
 import { useHealthStatus } from "../hooks/useHealthStatus";
+import { getHomePath } from "../utils/homePath";
 import { Eye, EyeOff, Loader2, ShieldCheck, Lock, User } from "lucide-react";
 
 export default function Login() {
@@ -24,7 +25,7 @@ export default function Login() {
       if (user.must_change_password) {
         navigate("/set-password", { replace: true });
       } else {
-        navigate("/dashboard", { replace: true });
+        navigate(getHomePath(user), { replace: true });
       }
     }
   }, [ready, token, user, navigate]);
@@ -45,7 +46,7 @@ export default function Login() {
         if (res.must_change_password) {
           navigate("/set-password", { replace: true });
         } else {
-          navigate("/dashboard", { replace: true });
+          navigate(getHomePath(res.user), { replace: true });
         }
       }
     } catch (err) {
@@ -106,14 +107,14 @@ export default function Login() {
 
             <Link
               to="/health"
-              className="mt-8 flex items-center gap-3 text-xs text-gray-500 hover:text-gray-700 transition w-fit"
+              className="mt-8 flex items-center gap-3 text-xs font-bold text-gray-600 hover:text-gray-800 transition w-fit"
             >
-              <span className="relative flex h-2 w-2">
+              <span className="relative flex h-3 w-3">
                 {health.status === "ok" && (
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
                 )}
                 <span
-                  className={`relative inline-flex rounded-full h-2 w-2 ${
+                  className={`relative inline-flex rounded-full h-3 w-3 ${
                     health.status === "ok"
                       ? "bg-emerald-500"
                       : health.status === "down"

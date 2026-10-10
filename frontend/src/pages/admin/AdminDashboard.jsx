@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Building2, Users, CheckCircle2, XCircle, TrendingUp, Plus } from "lucide-react";
+import { Building2, Users, CheckCircle2, XCircle, TrendingUp, Plus, Activity, RefreshCw, ExternalLink } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
-import { getAdminStats, listTenants } from "../../api/admin";
+import { getAdminStats, listTenants, getAdminLogs } from "../../api/admin";
+import { useHealthStatus } from "../../hooks/useHealthStatus";
 
 function StatCard({ icon: Icon, label, value, sub, color }) {
   const colors = {
@@ -37,10 +38,117 @@ const CustomTooltip = ({ active, payload, label }) => {
   );
 };
 
+function SystemPanel() {
+  const health = useHealthStatus();
+  const [logLines, setLogLines] = useState([]);
+  const [logError, setLogError] = useState("");
+  const [logLoading, setLogLoading] = useState(true);
+  const boxRef = useRef(null);
+
+  const fetchLogs = async () => {
+    setLogLoading(true);
+    try {
+      const data = await getAdminLogs(300);
+      setLogLines(data.lines || []);
+      setLogError(data.error || "");
+    } catch {
+      setLogError("Failed to load logs.");
+    } finally {
+      setLogLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLogs();
+    const interval = setInterval(fetchLogs, 15000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight;
+  }, [logLines]);
+
+  return (
+    <div className="space-y-6">
+      {/* Live status */}
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Activity size={16} className="text-emerald-500" />
+            <span className="text-sm font-semibold text-gray-700">Live status</span>
+          </div>
+          <a
+            href="/health"
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-1 text-xs text-emerald-600 hover:underline"
+          >
+            Public status page <ExternalLink size={11} />
+          </a>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+          <div>
+            <p className="text-xs text-gray-400">Status</p>
+            <p className={`font-semibold ${health.status === "ok" ? "text-emerald-600" : "text-red-600"}`}>
+              {health.status === "checking" ? "Checking…" : health.status === "ok" ? "Operational" : health.status}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400">Database</p>
+            <p className="font-semibold text-gray-800">
+              {health.components.find((c) => c.name === "Database")?.status === "ok" ? "Operational" : "—"}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400">Uptime since deploy</p>
+            <p className="font-semibold text-gray-800">
+              {health.uptimeSeconds != null ? `${Math.floor(health.uptimeSeconds / 60)}m` : "—"}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-400">Version</p>
+            <p className="font-semibold text-gray-800">{health.version ? `v${health.version}` : "—"}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Log viewer */}
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <span className="text-sm font-semibold text-gray-700">Backend logs (last 300 lines, auto-refreshing)</span>
+          <button
+            onClick={fetchLogs}
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700"
+          >
+            <RefreshCw size={12} className={logLoading ? "animate-spin" : ""} /> Refresh
+          </button>
+        </div>
+        <div
+          ref={boxRef}
+          className="bg-gray-900 text-gray-200 font-mono text-xs p-4 h-80 overflow-y-auto whitespace-pre-wrap"
+        >
+          {logError ? (
+            <span className="text-red-400">{logError}</span>
+          ) : logLines.length ? (
+            logLines.map((line, i) => <div key={i}>{line}</div>)
+          ) : (
+            <span className="text-gray-500">No log output yet.</span>
+          )}
+        </div>
+        <p className="px-5 py-2 text-[11px] text-gray-400 border-t border-gray-100">
+          This reads the backend's own log file directly — it won't show infra-level detail
+          (CPU, memory, deploy history) that only Coolify itself has access to.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminDashboard() {
   const [stats, setStats] = useState(null);
   const [recentTenants, setRecentTenants] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState("overview");
 
   useEffect(() => {
     Promise.all([getAdminStats(), listTenants()])
@@ -75,6 +183,30 @@ export default function AdminDashboard() {
         </Link>
       </div>
 
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-gray-200">
+        {[
+          { id: "overview", label: "Overview" },
+          { id: "system", label: "System status" },
+        ].map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition ${
+              tab === t.id
+                ? "border-emerald-600 text-emerald-700"
+                : "border-transparent text-gray-400 hover:text-gray-600"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "system" ? (
+        <SystemPanel />
+      ) : (
+      <>
       {/* Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard icon={Building2} label="Total tenants"   value={stats.total_tenants}    sub={`${stats.tenants_this_month} this month`} color="blue" />
@@ -142,6 +274,8 @@ export default function AdminDashboard() {
           </table>
         )}
       </div>
+      </>
+      )}
     </div>
   );
 }
