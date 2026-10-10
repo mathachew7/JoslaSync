@@ -1,6 +1,5 @@
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 
-import Register       from "../pages/Register";
 import Login          from "../pages/Login";
 import SetPassword    from "../pages/SetPassword";
 import ForgotPassword from "../pages/ForgotPassword";
@@ -55,7 +54,6 @@ export default function AppRoutes() {
       {/* Public routes */}
       <Route path="/" element={isLoggedIn ? <Navigate to="/dashboard" replace /> : <Login />} />
       <Route path="/login" element={isLoggedIn ? <Navigate to="/dashboard" replace /> : <Login />} />
-      <Route path="/register" element={isLoggedIn ? <Navigate to="/dashboard" replace /> : <Register />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
 

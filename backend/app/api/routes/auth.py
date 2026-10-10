@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.logger import logger
 from app.core.config import settings
 from app.db.database import get_db
-from app.db.deps import get_current_user  # <-- make sure this returns claims from JWT
+from app.db.deps import get_current_user, require_super_admin  # <-- make sure this returns claims from JWT
 from app.schemas.auth import UserCreate, UserRead, LoginInput, LoginResponse, SetPasswordInput, UserUpdate
 from app.services.auth_service import AuthService
 from app.repositories.auth_repo import AuthRepository
@@ -28,8 +28,17 @@ auth_repo = AuthRepository()
 company_repo = CompanyProfileRepository()
 
 @router.post("/register", response_model=UserRead)
-def register_user(user: UserCreate, db: Session = Depends(get_db)):
-    logger.info(f"➡️ POST /auth/register | user={user.username}")
+def register_user(
+    user: UserCreate,
+    db: Session = Depends(get_db),
+    _admin: dict = Depends(require_super_admin),
+):
+    """Admin-only: the login page's own copy says 'Registration is private' —
+    this endpoint used to be fully public, which let anyone self-register a
+    super_admin account via an unverified @joslatech.com email. Tenant
+    creation should go through POST /api/admin/tenants instead; this route
+    stays only for any code path that still depends on it, now properly gated."""
+    logger.info(f"➡️ POST /auth/register | by={_admin.get('username')} | new_user={user.username}")
     result = service.register_user(user, db)
     logger.info(f"✅ User registered: {result.username}")
     return result
