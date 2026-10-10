@@ -1,6 +1,6 @@
 // src/pages/Login.jsx
 import { useEffect, useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { login } from "../api/auth";
 import { useAuth } from "../context/AuthContext";
 import { Eye, EyeOff, Loader2, ShieldCheck, Lock, User } from "lucide-react";
@@ -176,14 +176,11 @@ export default function Login() {
                     {showPw ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
-                <div className="mt-2 flex items-center justify-between text-xs">
+                <div className="mt-2 flex items-center text-xs">
                   <label className="inline-flex items-center gap-2 text-gray-600">
                     <input type="checkbox" className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
                     Remember me
                   </label>
-                  <Link to="/forgot-password" className="text-emerald-700 hover:underline">
-                    Forgot password?
-                  </Link>
                 </div>
               </div>
 

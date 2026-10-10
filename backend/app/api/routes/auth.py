@@ -1,10 +1,5 @@
 # app/api/routes/auth.py
-import time
-import secrets
-import smtplib
-from email.mime.text import MIMEText
 from fastapi import APIRouter, Depends, Response, Request, HTTPException, status
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.logger import logger
@@ -16,12 +11,7 @@ from app.services.auth_service import AuthService
 from app.repositories.auth_repo import AuthRepository
 from app.repositories.company_profile_repo import CompanyProfileRepository
 from app.utils.response_utils import set_refresh_cookie
-from app.utils.security import hash_password
 from app.utils.rate_limit import check_rate_limit, client_ip
-
-# In-memory reset token store: {token: {user_id, expires_at}}
-_reset_tokens: dict = {}
-_TOKEN_TTL = 3600  # 1 hour
 
 router = APIRouter()
 service = AuthService()
@@ -123,86 +113,6 @@ def me(claims: dict = Depends(get_current_user), db: Session = Depends(get_db)):
             "company_name": getattr(company, "company_name", None),
         },
     }
-
-
-class ForgotPasswordInput(BaseModel):
-    email: str
-
-class ResetPasswordInput(BaseModel):
-    token: str
-    new_password: str
-
-def _send_reset_email(to_email: str, token: str) -> None:
-    try:
-        body = (
-            f"Hello,\n\n"
-            f"You requested a password reset for your JoslaSync account.\n\n"
-            f"Reset token (expires in 1 hour):\n\n  {token}\n\n"
-            f"Enter this token on the Reset Password page.\n\n"
-            f"If you did not request this, ignore this email.\n\n"
-            f"— JoslaSync"
-        )
-        msg = MIMEText(body)
-        msg["Subject"] = "JoslaSync — Password Reset"
-        msg["From"] = settings.EMAIL_FROM
-        msg["To"] = to_email
-
-        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10) as s:
-            s.starttls()
-            s.login(settings.SMTP_USER, settings.SMTP_PASS)
-            s.sendmail(settings.EMAIL_FROM, [to_email], msg.as_string())
-        logger.info(f"📧 Reset email sent to {to_email}")
-    except Exception as exc:
-        logger.warning(f"⚠️ Could not send reset email: {exc}")
-
-
-@router.post("/forgot-password")
-def forgot_password(payload: ForgotPasswordInput, request: Request, db: Session = Depends(get_db)):
-    ip = client_ip(request)
-    check_rate_limit(f"forgot-password:ip:{ip}", max_attempts=10, window_seconds=60)
-    check_rate_limit(f"forgot-password:email:{payload.email.strip().lower()}", max_attempts=3, window_seconds=300)
-    user = auth_repo.get_user_by_email(db, payload.email.strip().lower())
-    if not user:
-        # Don't reveal whether the email exists
-        return {"detail": "If that email is registered, a reset token has been sent."}
-
-    # Expire old tokens for this user
-    now = time.time()
-    for t, v in list(_reset_tokens.items()):
-        if v["user_id"] == user.id or v["expires_at"] < now:
-            del _reset_tokens[t]
-
-    token = secrets.token_urlsafe(32)
-    _reset_tokens[token] = {"user_id": user.id, "expires_at": now + _TOKEN_TTL}
-    _send_reset_email(user.email, token)
-    logger.info(f"🔑 Password reset token issued for user {user.username}")
-
-    response: dict = {"detail": "If that email is registered, a reset token has been sent."}
-    if settings.DEBUG:
-        response["debug_token"] = token  # only in dev mode
-    return response
-
-
-@router.post("/reset-password")
-def reset_password(payload: ResetPasswordInput, db: Session = Depends(get_db)):
-    now = time.time()
-    entry = _reset_tokens.get(payload.token)
-    if not entry or entry["expires_at"] < now:
-        raise HTTPException(status_code=400, detail="Invalid or expired reset token.")
-
-    user = auth_repo.get_user_by_id(db, entry["user_id"])
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found.")
-
-    if len(payload.new_password) < 6:
-        raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
-
-    user.hashed_password = hash_password(payload.new_password)
-    user.must_change_password = False
-    db.commit()
-    del _reset_tokens[payload.token]
-    logger.info(f"✅ Password reset completed for user {user.username}")
-    return {"detail": "Password updated successfully."}
 
 
 @router.put("/me", response_model=UserRead)
