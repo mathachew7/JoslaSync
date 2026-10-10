@@ -23,7 +23,7 @@ const PAGE_SIZE = 5;
 
 export default function Clients() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, viewingTenant } = useAuth();
   const isMaster = !!user && (
     user?.roles?.includes?.("MASTER") ||
     user?.email === import.meta.env.VITE_MASTER_EMAIL
@@ -82,7 +82,7 @@ export default function Clients() {
   useEffect(() => {
     fetchData(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, status]);
+  }, [q, status, viewingTenant?.db_name]);
 
   const fetchDeleted = async () => {
     setLoadingDeleted(true);
@@ -101,7 +101,7 @@ export default function Clients() {
   useEffect(() => {
     if (activeTab === "deleted" && isMaster) fetchDeleted();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]);
+  }, [activeTab, viewingTenant?.db_name]);
 
   const handleRestore = async (id) => {
     setRestoringId(id);

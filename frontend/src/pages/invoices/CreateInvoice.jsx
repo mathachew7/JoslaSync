@@ -7,6 +7,7 @@ import { createInvoice } from "../../api/invoices";
 import { useAuth } from "../../context/AuthContext";
 import DialogBox from "../../components/DialogBox";
 import FeatureGate from "../../components/FeatureGate";
+import { parseApiError } from "../../utils/parseApiError";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -20,14 +21,6 @@ const todayIso = () => new Date().toISOString().split("T")[0];
 
 const fmtMoney = (n) =>
   Number(n || 0).toLocaleString("en-US", { style: "currency", currency: "USD" });
-
-const parseApiError = (err) => {
-  const detail = err?.response?.data?.detail;
-  if (!detail) return err?.message || "Unknown error.";
-  if (Array.isArray(detail))
-    return detail.map((d) => `${(d.loc || []).join(".")}: ${d.msg}`).join("\n");
-  return typeof detail === "string" ? detail : JSON.stringify(detail);
-};
 
 // ── component ─────────────────────────────────────────────────────────────────
 
@@ -582,7 +575,7 @@ export default function CreateInvoice() {
                 value={discountValue}
                 min="0"
                 step={discountType === "PERCENT" ? "1" : "0.01"}
-                onChange={(e) => setDiscountValue(Math.max(0, parseFloat(e.target.value) || 0))}
+                onChange={(e) => setDiscountValue(Math.max(0, Math.round((parseFloat(e.target.value) || 0) * 100) / 100))}
                 className="border border-gray-300 rounded px-2 py-1.5 text-sm w-24 focus:outline-none"
               />
             </>
@@ -598,7 +591,7 @@ export default function CreateInvoice() {
             min="0"
             max="100"
             step="0.01"
-            onChange={(e) => setTaxRate(Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)))}
+            onChange={(e) => setTaxRate(Math.max(0, Math.min(100, Math.round((parseFloat(e.target.value) || 0) * 100) / 100)))}
             className="border border-gray-300 rounded px-2 py-1.5 text-sm w-24 focus:outline-none"
           />
         </div>

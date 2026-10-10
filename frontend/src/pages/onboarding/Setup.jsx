@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Building2, Loader2, Camera, Check } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { getCompanyProfile, updateCompanyProfile } from "../../api/company";
+import { parseApiError } from "../../utils/parseApiError";
 
 const STATE_TAX = {
   NY: 8.875, CA: 7.25, TX: 6.25, FL: 6.0, IL: 6.25,
@@ -96,7 +97,7 @@ export default function Setup() {
       await updateCompanyProfile(fd);
       navigate("/dashboard", { replace: true });
     } catch (err) {
-      setError(err?.response?.data?.detail || "Failed to save. Please try again.");
+      setError(parseApiError(err, "Failed to save. Please try again."));
       setSaving(false);
     }
   };

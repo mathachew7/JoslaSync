@@ -23,6 +23,7 @@ import {
 } from "../../api/invoices";
 import { getClient } from "../../api/clients";
 import DialogBox from "../../components/DialogBox";
+import { useAuth } from "../../context/AuthContext";
 
 const COLORS = {
   INVOICE: "#6ee7b7",
@@ -39,6 +40,7 @@ const money = (v) => (v == null || v === "" ? "-" : `$${Number(v).toFixed(2)}`);
 export default function Invoices() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { viewingTenant } = useAuth();
 
   // Table data (paginated)
   const [rows, setRows] = useState([]);
@@ -110,7 +112,7 @@ export default function Invoices() {
         }
       } catch {}
     })();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [viewingTenant?.db_name]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const clientNameOf = (inv) =>
     clientMap[inv.client_id] ||
@@ -163,7 +165,7 @@ export default function Invoices() {
     } catch { /* best effort */ }
   };
 
-  useEffect(() => { fetchTabCounts(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchTabCounts(); }, [viewingTenant?.db_name]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch table list (paginated, with table filters)
   const fetchList = async (page = meta.page) => {
@@ -290,7 +292,7 @@ export default function Invoices() {
     setSelected(new Set());
     fetchList(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, status, clientIdFilter, dateFrom, dateTo, sort, order]);
+  }, [q, status, clientIdFilter, dateFrom, dateTo, sort, order, viewingTenant?.db_name]);
 
   useEffect(() => {
     if (parseInt(startYear) > parseInt(endYear)) {
@@ -301,7 +303,7 @@ export default function Invoices() {
     }
     fetchStatsAndCharts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startYear, endYear]);
+  }, [startYear, endYear, viewingTenant?.db_name]);
 
   // Derived
   const totalPages = Math.max(1, Math.ceil((meta.total || 0) / PAGE_SIZE));

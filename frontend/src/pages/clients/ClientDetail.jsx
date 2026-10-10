@@ -10,6 +10,7 @@ import { listInvoices } from "../../api/invoices";
 import { getCompanyProfile } from "../../api/company";
 import { generateStatementPdf } from "../../utils/generateStatementPdf";
 import DialogBox from "../../components/DialogBox";
+import { useAuth } from "../../context/AuthContext";
 
 const STATUS_OPTIONS = ["Active", "Deactivated", "Blacklisted"];
 
@@ -82,6 +83,7 @@ function SelectField({ label, name, value, options, editing, onChange }) {
 export default function ClientDetail() {
   const { clientId } = useParams();
   const navigate = useNavigate();
+  const { viewingTenant } = useAuth();
 
   const [client, setClient] = useState(null);
   const [invoices, setInvoices] = useState([]);
@@ -142,7 +144,7 @@ export default function ClientDetail() {
       }
     })();
     return () => { alive = false; };
-  }, [clientId]);
+  }, [clientId, viewingTenant?.db_name]);
 
   const onChange = (e) => {
     const { name, value } = e.target;

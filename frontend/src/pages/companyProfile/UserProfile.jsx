@@ -36,7 +36,7 @@ const TABS = [
 ];
 
 export default function UserProfile() {
-  const { user, ready } = useAuth();
+  const { user, ready, viewingTenant } = useAuth();
   const isMaster =
     !!user &&
     (user?.role === "master" || user?.email === import.meta.env.VITE_MASTER_EMAIL);
@@ -140,7 +140,7 @@ export default function UserProfile() {
       }
     })();
     return () => { alive = false; };
-  }, []);
+  }, [viewingTenant?.db_name]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;

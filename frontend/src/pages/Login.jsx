@@ -1,8 +1,10 @@
 // src/pages/Login.jsx
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { login } from "../api/auth";
 import { useAuth } from "../context/AuthContext";
+import { parseApiError } from "../utils/parseApiError";
+import { useHealthStatus } from "../hooks/useHealthStatus";
 import { Eye, EyeOff, Loader2, ShieldCheck, Lock, User } from "lucide-react";
 
 export default function Login() {
@@ -14,6 +16,7 @@ export default function Login() {
   const navigate = useNavigate();
 
   const { ready, token, user, setToken } = useAuth();
+  const health = useHealthStatus();
 
   // If already logged in, redirect based on role (must_change_password takes priority)
   useEffect(() => {
@@ -52,10 +55,7 @@ export default function Login() {
       } else if (!err?.response) {
         apiMsg = "Cannot reach the server. Check your connection or try again later.";
       } else {
-        apiMsg =
-          err?.response?.data?.detail ||
-          err?.response?.data?.message ||
-          "Invalid username or password.";
+        apiMsg = parseApiError(err, "Invalid username or password.");
       }
       setErrorMsg(apiMsg);
     } finally {
@@ -104,10 +104,33 @@ export default function Login() {
               </li>
             </ul>
 
-            <div className="mt-8 flex items-center gap-3 text-xs text-gray-500">
-              <div className="h-2 w-2 rounded-full bg-emerald-500" />
-              <span>System status: All services operational</span>
-            </div>
+            <Link
+              to="/health"
+              className="mt-8 flex items-center gap-3 text-xs text-gray-500 hover:text-gray-700 transition w-fit"
+            >
+              <span className="relative flex h-2 w-2">
+                {health.status === "ok" && (
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                )}
+                <span
+                  className={`relative inline-flex rounded-full h-2 w-2 ${
+                    health.status === "ok"
+                      ? "bg-emerald-500"
+                      : health.status === "down"
+                      ? "bg-red-500"
+                      : "bg-gray-400"
+                  }`}
+                />
+              </span>
+              <span>
+                System status:{" "}
+                {health.status === "ok"
+                  ? "All services operational"
+                  : health.status === "down"
+                  ? "Service unreachable"
+                  : "Checking…"}
+              </span>
+            </Link>
           </div>
 
           {/* Right: Form */}
@@ -219,8 +242,8 @@ export default function Login() {
                 Don’t have an account?{" "}
                 <span className="font-medium text-gray-800">
                   Contact{" "}
-                  <a href="mailto:support@joslatech.com" className="text-emerald-700 hover:underline">
-                    support@joslatech.com
+                  <a href="mailto:ysubash@joslatech.com" className="text-emerald-700 hover:underline">
+                    ysubash@joslatech.com
                   </a>
                 </span>
                 . Registration is private.

@@ -11,6 +11,7 @@ import {
   getTenantFeatures, updateTenantFeature,
 } from "../../api/admin";
 import { useAuth } from "../../context/AuthContext";
+import { parseApiError } from "../../utils/parseApiError";
 
 function generatePassword(len = 12) {
   const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
@@ -164,7 +165,7 @@ function ResetModal({ user, onClose, onDone }) {
       setResult(r);
       onDone(r.user);
     } catch (err) {
-      setError(err?.response?.data?.detail || "Failed to reset password.");
+      setError(parseApiError(err, "Failed to reset password."));
     } finally {
       setLoading(false);
     }
@@ -250,7 +251,7 @@ function EditNameModal({ currentName, onClose, onSave }) {
       await onSave(name.trim());
       onClose();
     } catch (err) {
-      setError(err?.response?.data?.detail || "Failed to update company name.");
+      setError(parseApiError(err, "Failed to update company name."));
     } finally {
       setLoading(false);
     }
@@ -309,7 +310,7 @@ function AddUserModal({ onClose, onAdd }) {
       await onAdd(identifier.trim(), password);
       onClose();
     } catch (err) {
-      setError(err?.response?.data?.detail || "Failed to add user.");
+      setError(parseApiError(err, "Failed to add user."));
     } finally {
       setLoading(false);
     }
@@ -382,7 +383,7 @@ function ArchiveConfirmModal({ companyName, onClose, onConfirm }) {
       await onConfirm();
       onClose();
     } catch (err) {
-      setError(err?.response?.data?.detail || "Failed to archive tenant.");
+      setError(parseApiError(err, "Failed to archive tenant."));
       setLoading(false);
     }
   };

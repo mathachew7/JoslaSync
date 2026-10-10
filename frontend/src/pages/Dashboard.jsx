@@ -27,7 +27,7 @@ const STATUS_STYLES = {
 };
 
 export default function Dashboard() {
-  const { ready, token } = useAuth();
+  const { ready, token, viewingTenant } = useAuth();
   const navigate = useNavigate();
 
   const now = new Date();
@@ -82,7 +82,7 @@ export default function Dashboard() {
       }
     })();
     return () => { cancelled = true; };
-  }, [ready, token, yearFrom, yearTo]);
+  }, [ready, token, yearFrom, yearTo, viewingTenant?.db_name]);
 
   const collectionRate = stats?.total_invoiced > 0
     ? Math.round((stats.total_collected / stats.total_invoiced) * 100)

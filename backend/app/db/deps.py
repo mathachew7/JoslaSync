@@ -3,6 +3,7 @@ from typing import Dict, Generator, Optional
 
 import jwt
 from fastapi import Depends, HTTPException, Request, status
+from fastapi.exceptions import RequestValidationError
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -87,7 +88,7 @@ def get_company_db(request: Request, claims: Dict = Depends(get_token_claims)) -
     db = SessionLocal()
     try:
         yield db
-    except (HTTPException, StarletteHTTPException):
+    except (HTTPException, StarletteHTTPException, RequestValidationError):
         raise  # let FastAPI handle 4xx responses from route handlers normally
     except Exception as exc:
         logger.exception(f"❌ Tenant DB error [{db_name}]: {exc}")

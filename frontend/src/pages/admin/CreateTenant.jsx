@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { ArrowLeft, Building2, Eye, EyeOff, Loader2, RefreshCw, Copy, Check } from "lucide-react";
 import { createTenant } from "../../api/admin";
+import { parseApiError } from "../../utils/parseApiError";
 
 function generatePassword(len = 12) {
   const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
@@ -57,7 +58,7 @@ export default function CreateTenant() {
       const tenant = await createTenant(form);
       navigate(`/admin/tenants/${tenant.id}`, { replace: true });
     } catch (err) {
-      setError(err?.response?.data?.detail || "Failed to create tenant.");
+      setError(parseApiError(err, "Failed to create tenant."));
     } finally {
       setLoading(false);
     }

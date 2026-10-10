@@ -204,3 +204,14 @@ GET/PUT   /api/company-settings
 - **Frontend**: API modules in `src/api/` return typed promises. `AuthContext` is the single source of truth for token/user/company. All protected routes require `isLoggedIn` (from localStorage).
 - **Tenant isolation**: Never pass raw SQL; always use SQLAlchemy. Never reference master models from tenant sessions.
 - **Decimal arithmetic**: Always use Python `Decimal` for monetary values; never `float`.
+
+---
+
+## Versioning & releases
+
+- `backend/VERSION` (plain text, e.g. `1.0.0`) is the single source of truth for the app's version.
+- Bump it as part of any push to `main` that represents a meaningful, user-facing change — not every commit needs a bump.
+- `GET /api/health` reads this file and returns it as `version`; the public `/health` page displays it.
+- `.github/workflows/deployment-status.yml` runs on every push to `main` and:
+  - creates a GitHub Release tagged `v<version>` if the version was bumped (no-op if it already exists)
+  - waits for Coolify's webhook-triggered deploy to roll out, then polls the live `/api/health` endpoint and records a GitHub Deployment (success/failure) against the "Production" environment based on whether the site actually came back up healthy — not just that a push happened

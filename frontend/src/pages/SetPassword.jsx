@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Eye, EyeOff, KeyRound, Loader2 } from "lucide-react";
 import { setPassword } from "../api/admin";
 import { useAuth } from "../context/AuthContext";
+import { parseApiError } from "../utils/parseApiError";
 
 export default function SetPassword() {
   const [password, setPasswordVal] = useState("");
@@ -26,10 +27,7 @@ export default function SetPassword() {
       await refreshUser();
       navigate("/setup", { replace: true });
     } catch (err) {
-      setError(
-        err?.response?.data?.detail ||
-        "Failed to set password. Please try again."
-      );
+      setError(parseApiError(err, "Failed to set password. Please try again."));
     } finally {
       setLoading(false);
     }

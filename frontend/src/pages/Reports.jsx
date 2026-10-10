@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { listInvoices, getTopClients } from "../api/invoices";
 import { listClients } from "../api/clients";
+import { useAuth } from "../context/AuthContext";
 
 /** ---------- helpers ---------- */
 const MAX_API_PAGE_SIZE = 100; // Backend max (avoid 422)
@@ -105,6 +106,7 @@ async function fetchAllClients() {
 
 /** ---------- Reports page ---------- */
 export default function Reports() {
+  const { viewingTenant } = useAuth();
   const presets = useMemo(rangePresets, []);
   const [tab, setTab] = useState("aging"); // default you were viewing
   const [dateFrom, setDateFrom] = useState(presets.YTD.from);
@@ -155,7 +157,7 @@ export default function Reports() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [viewingTenant?.db_name]);
 
   const selectedClientLabel = useMemo(() => {
     if (!clientId) return "All clients";
@@ -312,7 +314,7 @@ export default function Reports() {
   useEffect(() => {
     apply();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [viewingTenant?.db_name]);
 
   // If clients arrive after invoices, rebuild aging rows to swap “Unknown” -> real names
   useEffect(() => {

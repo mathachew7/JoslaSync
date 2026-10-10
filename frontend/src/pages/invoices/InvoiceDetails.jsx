@@ -5,8 +5,10 @@ import { getInvoiceById, updateInvoice, voidInvoice, deleteInvoice, cloneInvoice
 import { getCompanyProfile, getCompanySettings } from "../../api/company";
 import { getClient } from "../../api/clients";
 import { generateInvoicePdf } from "../../utils/generateInvoicePdf";
+import { parseApiError } from "../../utils/parseApiError";
 import DialogBox from "../../components/DialogBox";
 import FeatureGate from "../../components/FeatureGate";
+import { useAuth } from "../../context/AuthContext";
 import {
   ArrowLeft,
   Download,
@@ -98,6 +100,7 @@ export default function InvoiceDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const { viewingTenant } = useAuth();
 
   const passed = location.state || {};
   const [invoice, setInvoice] = useState(passed.invoice || null);
@@ -164,7 +167,7 @@ export default function InvoiceDetail() {
       }
     })();
     return () => (ignore = true);
-  }, [id]);
+  }, [id, viewingTenant?.db_name]);
 
   // auto-enter edit if we navigated here after cloning
   useEffect(() => {
@@ -488,7 +491,7 @@ export default function InvoiceDetail() {
       setDialogOpen(true);
     } catch (e) {
       setDialogType("error");
-      setDialogMessage(e?.response?.data?.detail || "Failed to send invoice.");
+      setDialogMessage(parseApiError(e, "Failed to send invoice."));
       setDialogOpen(true);
     } finally {
       setSending(false);
@@ -617,7 +620,7 @@ export default function InvoiceDetail() {
       setDialogOpen(true);
     } catch (e) {
       setDialogType("error");
-      setDialogMessage(e?.response?.data?.detail || "Failed to update invoice.");
+      setDialogMessage(parseApiError(e, "Failed to update invoice."));
       setDialogOpen(true);
     } finally {
       setSaving(false);
@@ -651,7 +654,7 @@ export default function InvoiceDetail() {
       setDialogOpen(true);
     } catch (e) {
       setDialogType("error");
-      setDialogMessage(e?.response?.data?.detail || "Failed to issue invoice.");
+      setDialogMessage(parseApiError(e, "Failed to issue invoice."));
       setDialogOpen(true);
     } finally {
       setSaving(false);
@@ -699,7 +702,7 @@ export default function InvoiceDetail() {
       let msg = "Action failed.";
       if (confirmAction === "void") msg = "Failed to void invoice.";
       if (confirmAction === "delete") msg = "Failed to delete invoice.";
-      if (confirmAction === "clone") msg = err?.response?.data?.detail || "Failed to clone invoice.";
+      if (confirmAction === "clone") msg = parseApiError(err, "Failed to clone invoice.");
       setDialogType("error");
       setDialogMessage(msg);
       setDialogOpen(true);
@@ -1339,7 +1342,7 @@ export default function InvoiceDetail() {
                         onChange={(e) =>
                           setForm((f) => ({
                             ...f,
-                            discountValue: Math.max(0, parseFloat(e.target.value) || 0),
+                            discountValue: Math.max(0, Math.round((parseFloat(e.target.value) || 0) * 100) / 100),
                           }))
                         }
                         className="border p-2 rounded w-24"
@@ -1356,7 +1359,7 @@ export default function InvoiceDetail() {
                     type="number"
                     value={form.taxRate}
                     onChange={(e) =>
-                      setForm((f) => ({ ...f, taxRate: Math.max(0, parseFloat(e.target.value) || 0) }))
+                      setForm((f) => ({ ...f, taxRate: Math.max(0, Math.min(100, Math.round((parseFloat(e.target.value) || 0) * 100) / 100)) }))
                     }
                     className="border p-2 rounded w-24"
                     step="0.01"
@@ -1703,7 +1706,7 @@ function PaymentCard({ invoice, payAmount, setPayAmount, paying, setPaying, setI
       setDialogOpen(true);
     } catch (e) {
       setDialogType("error");
-      setDialogMessage(e?.response?.data?.detail || "Failed to void payment.");
+      setDialogMessage(parseApiError(e, "Failed to void payment."));
       setDialogOpen(true);
     } finally {
       setVoidingId(null);
@@ -1724,7 +1727,7 @@ function PaymentCard({ invoice, payAmount, setPayAmount, paying, setPaying, setI
       setDialogOpen(true);
     } catch (e) {
       setDialogType("error");
-      setDialogMessage(e?.response?.data?.detail || "Failed to record payment.");
+      setDialogMessage(parseApiError(e, "Failed to record payment."));
       setDialogOpen(true);
     } finally {
       setPaying(false);
@@ -1747,7 +1750,7 @@ function PaymentCard({ invoice, payAmount, setPayAmount, paying, setPaying, setI
       setDialogOpen(true);
     } catch (e) {
       setDialogType("error");
-      setDialogMessage(e?.response?.data?.detail || "Failed to adjust payment.");
+      setDialogMessage(parseApiError(e, "Failed to adjust payment."));
       setDialogOpen(true);
     } finally {
       setAdjusting(false);
@@ -1914,7 +1917,7 @@ function ReminderCard({ invoice, clientEmail, reminderConfig, sendingReminder, s
       setDialogOpen(true);
     } catch (e) {
       setDialogType("error");
-      setDialogMessage(e?.response?.data?.detail || "Failed to send reminder.");
+      setDialogMessage(parseApiError(e, "Failed to send reminder."));
       setDialogOpen(true);
     } finally {
       setSendingReminder(false);
