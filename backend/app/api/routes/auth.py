@@ -17,6 +17,7 @@ from app.repositories.auth_repo import AuthRepository
 from app.repositories.company_profile_repo import CompanyProfileRepository
 from app.utils.response_utils import set_refresh_cookie
 from app.utils.security import hash_password
+from app.utils.rate_limit import check_rate_limit, client_ip
 
 # In-memory reset token store: {token: {user_id, expires_at}}
 _reset_tokens: dict = {}
@@ -44,7 +45,10 @@ def register_user(
     return result
 
 @router.post("/login", response_model=LoginResponse)
-def login(payload: LoginInput, response: Response, db: Session = Depends(get_db)):
+def login(payload: LoginInput, request: Request, response: Response, db: Session = Depends(get_db)):
+    ip = client_ip(request)
+    check_rate_limit(f"login:ip:{ip}", max_attempts=20, window_seconds=60)
+    check_rate_limit(f"login:user:{ip}:{payload.username}", max_attempts=5, window_seconds=60)
     logger.info(f"➡️ POST /auth/login | user={payload.username}")
     result, refresh_token = service.login(payload, db)
     set_refresh_cookie(response, refresh_token)
@@ -153,7 +157,10 @@ def _send_reset_email(to_email: str, token: str) -> None:
 
 
 @router.post("/forgot-password")
-def forgot_password(payload: ForgotPasswordInput, db: Session = Depends(get_db)):
+def forgot_password(payload: ForgotPasswordInput, request: Request, db: Session = Depends(get_db)):
+    ip = client_ip(request)
+    check_rate_limit(f"forgot-password:ip:{ip}", max_attempts=10, window_seconds=60)
+    check_rate_limit(f"forgot-password:email:{payload.email.strip().lower()}", max_attempts=3, window_seconds=300)
     user = auth_repo.get_user_by_email(db, payload.email.strip().lower())
     if not user:
         # Don't reveal whether the email exists
