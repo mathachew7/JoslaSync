@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   getCompanyProfile,
   updateCompanyProfile,
-  registerCompanyProfile,
   getCompanySettings,
   updateReminderSettings,
   updateInvoiceSettings,
@@ -206,7 +205,7 @@ export default function UserProfile() {
     setSaving(true);
     try {
       const fd = buildFormData(profile);
-      const created = await registerCompanyProfile(fd);
+      const created = await updateCompanyProfile(fd);
       setInitial(created);
       setProfile({ ...created, username: created.username || "", email: created.company_email || "", password: "" });
       setLogoPreview(created.logo_url || null);

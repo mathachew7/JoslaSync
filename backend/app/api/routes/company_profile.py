@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.logger import logger
 from app.db.database import get_db
-from app.db.deps import get_company_db, get_token_claims  # tenant-scoped session
+from app.db.deps import get_company_db, get_token_claims, require_super_admin  # tenant-scoped session
 from app.schemas.company_profile import CompanyProfileOut
 from app.services.company_profile_service import CompanyProfileService
 
@@ -38,10 +38,17 @@ def register_company_profile(
     admin_password: str = Form(...),
     status: str = Form("Active"),
     master_db: Session = Depends(get_db),
+    _admin: dict = Depends(require_super_admin),
 ):
     """
     Registers a new company in the MASTER DB, creates tenant DB if missing,
     creates tenant tables, and returns the created profile (including db_name).
+
+    Admin-only: this had no auth check at all — anyone could create arbitrary
+    companies/databases/admin accounts. The normal "first company profile"
+    flow in the frontend now goes through PUT /company-profile instead
+    (tenant-scoped upsert), so this route is no longer used by any
+    legitimate user-facing flow; kept for admin tooling, now properly gated.
     """
     logger.info(f"🚀 Registering company: {company_name}")
 
