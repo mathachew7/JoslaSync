@@ -112,6 +112,13 @@ class AuthService:
             logger.error(f"❌ Company profile not found for user: {username}")
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Company profile not found")
 
+        if company.status == "suspended":
+            logger.warning(f"❌ Login blocked — company suspended: {company.company_name}")
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This company's account has been suspended.")
+        if company.status == "archived":
+            logger.warning(f"❌ Login blocked — company archived: {company.company_name}")
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This company's account is no longer active.")
+
         # Derive a slug if your master record doesn’t store it explicitly
         company_slug = getattr(company, "slug", None) or company.company_name.lower().replace(" ", "_")
 

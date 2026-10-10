@@ -189,7 +189,7 @@ export default function AddClient() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <div>
             <label className={LABEL}>Default Tax %</label>
-            <input type="number" name="default_tax_rate" value={form.default_tax_rate} onChange={set} className={inp("default_tax_rate")} placeholder="8.5" min="0" max="100" step="0.01" />
+            <input type="number" name="default_tax_rate" value={form.default_tax_rate} onChange={set} className={inp("default_tax_rate")} placeholder="8.5" min="0" max="100" step="any" />
             <Err name="default_tax_rate" />
           </div>
           <div>

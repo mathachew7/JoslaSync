@@ -69,8 +69,40 @@ class TenantStatusUpdate(BaseModel):
     @field_validator("status")
     @classmethod
     def _valid_status(cls, v: str) -> str:
-        if v not in ("active", "suspended"):
-            raise ValueError("status must be 'active' or 'suspended'.")
+        if v not in ("active", "suspended", "archived"):
+            raise ValueError("status must be 'active', 'suspended', or 'archived'.")
+        return v
+
+
+class TenantNameUpdate(BaseModel):
+    company_name: str
+
+    @field_validator("company_name")
+    @classmethod
+    def _company_name(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("company_name is required.")
+        return v
+
+
+class AddTenantUserRequest(BaseModel):
+    username_or_email: str
+    temp_password: str
+
+    @field_validator("username_or_email")
+    @classmethod
+    def _identifier(cls, v: str) -> str:
+        v = v.strip()
+        if len(v) < 3:
+            raise ValueError("Username or email must be at least 3 characters.")
+        return v
+
+    @field_validator("temp_password")
+    @classmethod
+    def _password(cls, v: str) -> str:
+        if len(v) < 6:
+            raise ValueError("Temp password must be at least 6 characters.")
         return v
 
 
@@ -96,4 +128,4 @@ class TenantFeaturesOut(BaseModel):
     draft_invoices: bool = True
     recurring_invoices: bool = True
     multi_user: bool = True
-    email_reminders: bool = True
+    email_reminders: bool = False  # paid add-on; off until an admin opts the tenant in

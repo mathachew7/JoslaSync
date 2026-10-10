@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from typing import Optional
+from datetime import datetime
 from pydantic import BaseModel, EmailStr, Field, validator
 
 
@@ -58,8 +59,8 @@ class CompanySettingsBase(BaseModel):
 
 class CompanySettingsOut(CompanySettingsBase):
     id: int
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime
 
     class Config:
         orm_mode = True

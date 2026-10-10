@@ -18,9 +18,11 @@ from app.schemas.invoice import (
     PaginationMeta,
     PaymentRequest,
     PaymentAdjustRequest,
+    PaymentOut,
     SendInvoiceRequest,
 )
 from app.crud import invoice as invoice_crud
+from app.crud import payment as payment_crud
 from app.crud.invoice import log_invoice_event
 
 router = APIRouter(prefix="/invoices", tags=["invoices"])
@@ -316,13 +318,43 @@ def record_payment(
 ):
     uname = user.get("email") or user.get("sub") or "unknown"
     logger.info(f"➡️ POST /invoices/{invoice_id}/pay | user={uname} amount={payload.amount}")
+    actor = user.get("username") or user.get("sub")
     try:
-        obj = invoice_crud.record_payment(db, invoice_id, payload.amount)
+        obj = payment_crud.record_payment(db, invoice_id, payload.amount, payload.note, actor)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     logger.info(f"✅ /invoices/{invoice_id}/pay | amount_paid={obj.amount_paid}")
-    actor = user.get("username") or user.get("sub")
     log_invoice_event(db, invoice_id, "payment", f"Payment of ${payload.amount} recorded", actor)
+    return InvoiceRead.model_validate(obj)
+
+
+# --- Payment ledger: list + void individual entries ---
+@router.get("/{invoice_id}/payments", response_model=List[PaymentOut])
+def list_payments(
+    invoice_id: UUID,
+    db: Session = Depends(get_company_db),
+    user: dict = Depends(get_current_user),
+):
+    rows = payment_crud.list_payments(db, invoice_id)
+    return [PaymentOut.model_validate(r) for r in rows]
+
+
+@router.post("/{invoice_id}/payments/{payment_id}/void", response_model=InvoiceRead)
+def void_payment(
+    invoice_id: UUID,
+    payment_id: UUID,
+    db: Session = Depends(get_company_db),
+    user: dict = Depends(get_current_user),
+):
+    uname = user.get("email") or user.get("sub") or "unknown"
+    actor = user.get("username") or user.get("sub")
+    logger.info(f"➡️ POST /invoices/{invoice_id}/payments/{payment_id}/void | user={uname}")
+    try:
+        obj = payment_crud.void_payment(db, invoice_id, payment_id, actor)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    logger.info(f"✅ /invoices/{invoice_id}/payments/{payment_id}/void | amount_paid={obj.amount_paid}")
+    log_invoice_event(db, invoice_id, "payment_voided", f"Payment {payment_id} voided", actor)
     return InvoiceRead.model_validate(obj)
 
 
@@ -335,24 +367,18 @@ def adjust_payment(
     user: dict = Depends(get_current_user),
 ):
     uname = user.get("email") or user.get("sub") or "unknown"
+    actor = user.get("username") or user.get("sub")
     logger.info(f"➡️ PUT /invoices/{invoice_id}/payment | user={uname} set_amount={payload.amount_paid}")
-    inv = invoice_crud.get_invoice(db, invoice_id)
-    if not inv:
-        raise HTTPException(status_code=404, detail="Invoice not found")
-    from decimal import Decimal
-    if Decimal(str(payload.amount_paid)) > Decimal(str(inv.total or 0)):
-        raise HTTPException(
-            status_code=422,
-            detail=f"Corrected amount ${payload.amount_paid} cannot exceed invoice total ${inv.total:.2f}."
-        )
-    inv.amount_paid = payload.amount_paid
-    if payload.note:
-        inv.edit_note = (inv.edit_note or "") + f"\n[Payment correction] {payload.note}".strip()
+    try:
+        inv = payment_crud.correct_payment(db, invoice_id, payload.amount_paid, payload.note, actor)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     from datetime import datetime
     inv.last_edited_at = datetime.utcnow().isoformat()
     db.commit()
     db.refresh(inv)
     logger.info(f"✅ /invoices/{invoice_id}/payment adjusted | amount_paid={inv.amount_paid}")
+    log_invoice_event(db, invoice_id, "payment_corrected", payload.note or "Payment corrected", actor)
     return InvoiceRead.model_validate(inv)
 
 
@@ -390,6 +416,7 @@ def send_invoice(
             due_date=due_str,
             pdf_base64=payload.pdf_base64,
             pdf_filename=payload.pdf_filename,
+            reply_to=getattr(cp, "company_email", None),
         )
     except ValueError as e:
         raise HTTPException(status_code=503, detail=str(e))
@@ -447,6 +474,7 @@ def remind_invoice(
             due_date=str(inv.due_date) if inv.due_date else "—",
             days_overdue=max(0, days_overdue),
             reminder_count=new_count,
+            reply_to=getattr(cp, "company_email", None),
         )
     except ValueError as e:
         raise HTTPException(status_code=503, detail=str(e))

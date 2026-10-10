@@ -10,7 +10,7 @@ const DEFAULT_FEATURES: Features = {
   draft_invoices: true,
   recurring_invoices: true,
   multi_user: true,
-  email_reminders: true,
+  email_reminders: false, // paid add-on; off until an admin opts the tenant in
 };
 
 type Ctx = {

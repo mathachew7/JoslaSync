@@ -21,6 +21,12 @@ class CompanyProfileRepository:
         db.refresh(company)
         return company
 
+    def update_company_name(self, db: Session, company: Company, company_name: str) -> Company:
+        company.company_name = company_name
+        db.commit()
+        db.refresh(company)
+        return company
+
     def create_master_profile(self, db: Session, company_name: str, db_name: str) -> Company:
         record = Company(company_name=company_name, db_name=db_name)
         db.add(record)

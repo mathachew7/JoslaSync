@@ -6,11 +6,12 @@ from decimal import Decimal
 from pydantic import BaseModel, condecimal, field_validator
 from enum import Enum
 
-# --- enums (NOW includes DRAFT) ---
+# --- enums ---
 class InvoiceStatus(str, Enum):
     INVOICE = "INVOICE"
     VOID = "VOID"
-    DRAFT = "DRAFT"   # ← added
+    DRAFT = "DRAFT"
+    QUOTE = "QUOTE"
 
 class DiscountType(str, Enum):
     PERCENT = "PERCENT"
@@ -55,7 +56,7 @@ class InvoiceCreate(BaseModel):
     items: List[InvoiceItemCreate]
 
     # creator (references only; name is optional convenience)
-    created_by_user_id: Optional[UUID] = None
+    created_by_user_id: Optional[str] = None
     created_by_name: Optional[str] = None
 
     # amendment audit — required when editing a finalized INVOICE
@@ -73,12 +74,12 @@ class InvoiceCreate(BaseModel):
 class InvoiceRead(BaseModel):
     id: UUID
     invoice_no: str
-    status: InvoiceStatus  # INVOICE | VOID | DRAFT
+    status: InvoiceStatus  # INVOICE | VOID | DRAFT | QUOTE
 
     # references
     client_id: UUID
     company_id: Optional[int]  # <-- INT to match company_profile.id
-    created_by_user_id: Optional[UUID]
+    created_by_user_id: Optional[str]
     created_by_name: Optional[str]
 
     # dates & display
@@ -173,6 +174,20 @@ class PaymentRequest(BaseModel):
 class PaymentAdjustRequest(BaseModel):
     amount_paid: condecimal(max_digits=12, decimal_places=2, ge=Decimal("0"))
     note: Optional[str] = None
+
+class PaymentOut(BaseModel):
+    id: UUID
+    invoice_id: UUID
+    amount: Decimal
+    kind: str          # PAYMENT | CORRECTION
+    status: str         # ACTIVE | VOID
+    note: Optional[str] = None
+    recorded_by: Optional[str] = None
+    created_at: datetime
+    voided_at: Optional[str] = None
+    voided_by: Optional[str] = None
+
+    model_config = {"from_attributes": True}
 
 class SendInvoiceRequest(BaseModel):
     to_email: str

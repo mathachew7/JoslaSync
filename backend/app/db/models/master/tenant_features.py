@@ -5,6 +5,14 @@ from app.db.database import BaseMaster
 
 VALID_FEATURES = {"draft_invoices", "recurring_invoices", "multi_user", "email_reminders"}
 
+# Features in here default OFF for a tenant with no explicit row yet — an admin
+# must opt the tenant in (e.g. paid add-ons). Everything else defaults ON.
+DEFAULT_DISABLED_FEATURES = {"email_reminders"}
+
+
+def default_enabled(feature_key: str) -> bool:
+    return feature_key not in DEFAULT_DISABLED_FEATURES
+
 
 class TenantFeature(BaseMaster):
     """Per-tenant feature flag — one row per (company, feature_key)."""

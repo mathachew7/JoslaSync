@@ -644,28 +644,6 @@ def clone_invoice(
 # Analytics
 # ---------------------------
 
-def record_payment(db: Session, invoice_id: UUID_T, amount: "Decimal") -> Optional[Invoice]:
-    from decimal import Decimal
-    inv = db.get(Invoice, invoice_id)
-    if not inv:
-        raise ValueError("Invoice not found")
-    if (inv.status or "").upper() != "INVOICE":
-        raise ValueError("Payments can only be recorded against issued invoices.")
-    already_paid = Decimal(str(inv.amount_paid or 0))
-    total        = Decimal(str(inv.total or 0))
-    remaining    = total - already_paid
-    if Decimal(str(amount)) > remaining:
-        raise ValueError(
-            f"Payment of ${amount} exceeds the remaining balance of ${remaining:.2f}. "
-            f"Use 'Correct' to fix a payment mistake."
-        )
-    inv.amount_paid = already_paid + Decimal(str(amount))
-    db.commit()
-    db.refresh(inv)
-    logger.info(f"💰 Payment recorded id={invoice_id} amount_paid={inv.amount_paid}")
-    return inv
-
-
 def get_invoice_stats(db: Session):
     from datetime import date as _date
     today = _date.today()

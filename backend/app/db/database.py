@@ -86,6 +86,8 @@ def _migrate_tenant_columns(engine) -> None:
     migrations = [
         "ALTER TABLE company_profile ADD COLUMN IF NOT EXISTS full_name VARCHAR",
         "ALTER TABLE company_profile ADD COLUMN IF NOT EXISTS terms_and_conditions TEXT",
+        # created_by_user_id was originally UUID; user IDs are integers sent as strings
+        "ALTER TABLE invoices ALTER COLUMN created_by_user_id TYPE VARCHAR(64) USING created_by_user_id::text",
     ]
     with engine.connect() as conn:
         for sql in migrations:
@@ -94,6 +96,43 @@ def _migrate_tenant_columns(engine) -> None:
             except Exception as e:
                 logger.warning(f"⚠️ Column migration skipped: {e}")
         conn.commit()
+
+
+def _backfill_payment_ledger(engine) -> None:
+    """
+    One-time-per-invoice backfill: invoices that already had amount_paid > 0
+    before the payments ledger table existed get a single "legacy" ledger row,
+    so the new SUM(payments.amount)-based recompute doesn't silently zero out
+    real payment history recorded under the old scalar-only system.
+    Idempotent: skips any invoice that already has a ledger row.
+    """
+    from sqlalchemy.orm import Session as OrmSession
+    from sqlalchemy import select
+    from app.db.models.tenant.invoice import Invoice
+    from app.db.models.tenant.payment import Payment
+
+    with OrmSession(engine) as session:
+        invoices = session.execute(
+            select(Invoice).where(Invoice.amount_paid > 0)
+        ).scalars().all()
+        created = 0
+        for inv in invoices:
+            has_ledger_row = session.execute(
+                select(Payment.id).where(Payment.invoice_id == inv.id).limit(1)
+            ).first()
+            if has_ledger_row:
+                continue
+            session.add(Payment(
+                invoice_id=inv.id,
+                amount=inv.amount_paid,
+                kind="PAYMENT",
+                note="Legacy balance (recorded before payment ledger existed)",
+                status="ACTIVE",
+            ))
+            created += 1
+        if created:
+            session.commit()
+            logger.info(f"🧾 Backfilled {created} legacy payment ledger row(s)")
 
 
 def ensure_tenant_tables(db_name: str):
@@ -106,10 +145,12 @@ def ensure_tenant_tables(db_name: str):
     from app.db.models.tenant import company_settings as _company_settings  # noqa: F401
     from app.db.models.tenant import invoice as _invoice  # noqa: F401
     from app.db.models.tenant import invoice_event as _invoice_event  # noqa: F401
+    from app.db.models.tenant import payment as _payment  # noqa: F401
 
     engine = get_engine_for_db(db_name)
     BaseTenant.metadata.create_all(bind=engine)
     _migrate_tenant_columns(engine)
+    _backfill_payment_ledger(engine)
     logger.info(f"✅ Ensured tenant tables for DB '{db_name}'")
 
 # =======================

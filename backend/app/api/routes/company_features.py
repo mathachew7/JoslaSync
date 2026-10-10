@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.logger import logger
 from app.db.database import get_db
 from app.db.deps import get_current_user
-from app.db.models.master.tenant_features import TenantFeature, VALID_FEATURES
+from app.db.models.master.tenant_features import TenantFeature, VALID_FEATURES, default_enabled
 from app.schemas.admin import TenantFeaturesOut
 
 router = APIRouter(prefix="/company", tags=["Company Features"])
@@ -24,5 +24,5 @@ def get_own_features(
 
     rows = db.query(TenantFeature).filter(TenantFeature.company_id == int(company_id)).all()
     existing = {r.feature_key: r.enabled for r in rows}
-    flags = {key: existing.get(key, True) for key in VALID_FEATURES}
+    flags = {key: existing.get(key, default_enabled(key)) for key in VALID_FEATURES}
     return TenantFeaturesOut(**flags)

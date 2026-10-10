@@ -86,11 +86,21 @@ export default function Invoices() {
   const [allYears, setAllYears] = useState([]);
 
   useEffect(() => {
-    // fetch all invoices (large page) just to find distinct years
-    listInvoices({ page: 1, page_size: 1000, sort: "invoice_date", order: "asc" })
-      .then((res) => {
+    // fetch all invoices, paginated (backend caps page_size at 100), just to find distinct years
+    (async () => {
+      try {
+        const YEARS_PAGE_SIZE = 100;
+        let all = [];
+        let page = 1;
+        while (true) {
+          const res = await listInvoices({ page, page_size: YEARS_PAGE_SIZE, sort: "invoice_date", order: "asc" });
+          const batch = res?.data || [];
+          all = all.concat(batch);
+          if (all.length >= (res?.meta?.total ?? all.length) || batch.length < YEARS_PAGE_SIZE) break;
+          page++;
+        }
         const y = Array.from(
-          new Set((res.data || []).map((r) => (r.invoice_date || "").slice(0, 4)))
+          new Set(all.map((r) => (r.invoice_date || "").slice(0, 4)))
         ).filter(Boolean).sort();
         if (y.length) {
           setAllYears(y);
@@ -98,8 +108,8 @@ export default function Invoices() {
           setStartYear((prev) => (y.includes(prev) ? prev : y[0]));
           setEndYear((prev) => (y.includes(prev) ? prev : y[y.length - 1]));
         }
-      })
-      .catch(() => {});
+      } catch {}
+    })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const clientNameOf = (inv) =>
@@ -385,18 +395,26 @@ export default function Invoices() {
   const exportCsv = async () => {
     setExporting(true);
     try {
-      // Fetch ALL matching records (up to 1000 — reasonable cap)
-      const res = await listInvoices({
-        q: q || undefined,
-        status: status || undefined,
-        client_id: clientIdFilter || undefined,
-        date_from: dateFrom || undefined,
-        date_to: dateTo || undefined,
-        sort, order,
-        page: 1,
-        page_size: 1000,
-      });
-      const all = res?.data || [];
+      // Fetch ALL matching records, paginated (backend caps page_size at 100)
+      const EXPORT_PAGE_SIZE = 100;
+      let all = [];
+      let page = 1;
+      while (true) {
+        const res = await listInvoices({
+          q: q || undefined,
+          status: status || undefined,
+          client_id: clientIdFilter || undefined,
+          date_from: dateFrom || undefined,
+          date_to: dateTo || undefined,
+          sort, order,
+          page,
+          page_size: EXPORT_PAGE_SIZE,
+        });
+        const batch = res?.data || [];
+        all = all.concat(batch);
+        if (all.length >= (res?.meta?.total ?? all.length) || batch.length < EXPORT_PAGE_SIZE) break;
+        page++;
+      }
 
       const headers = ["Invoice #", "Client", "Invoice Date", "Due Date", "Status", "Subtotal", "Discount", "Tax", "Total"];
       const escape = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
@@ -405,7 +423,7 @@ export default function Invoices() {
         escape(clientMap[inv.client_id] || inv.client?.name || "—"),
         escape(inv.invoice_date ?? ""),
         escape(inv.due_date ?? ""),
-        escape({ INVOICE: "Issued", VOID: "Void", DRAFT: "Draft" }[inv.status] ?? inv.status),
+        escape({ INVOICE: "Issued", VOID: "Void", DRAFT: "Draft", QUOTE: "Estimate" }[inv.status] ?? inv.status),
         escape(Number(inv.subtotal ?? 0).toFixed(2)),
         escape(Number(inv.discount_amount ?? 0).toFixed(2)),
         escape(Number(inv.tax_amount ?? 0).toFixed(2)),
@@ -715,7 +733,7 @@ export default function Invoices() {
             )}
             {rows.map((inv) => {
               const isSelected = selected.has(inv.id);
-              const statusLabel = { INVOICE: "Issued", VOID: "Void", DRAFT: "Draft" }[inv.status] ?? inv.status;
+              const statusLabel = { INVOICE: "Issued", VOID: "Void", DRAFT: "Draft", QUOTE: "Estimate" }[inv.status] ?? inv.status;
               const statusStyle = {
                 INVOICE: "bg-emerald-50 text-emerald-700 border-emerald-200",
                 VOID:    "bg-red-50 text-red-700 border-red-200",

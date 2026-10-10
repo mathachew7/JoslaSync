@@ -109,8 +109,8 @@ export default function ClientDetail() {
       try {
         const [c, inv, profile] = await Promise.all([
           getClient(clientId),
-          listInvoices({ client_id: clientId, page: 1, page_size: 200, sort: "invoice_date", order: "desc" }),
-          getCompanyProfile(),
+          listInvoices({ client_id: clientId, page: 1, page_size: 100, sort: "invoice_date", order: "desc" }),
+          getCompanyProfile().catch(() => null),
         ]);
         if (!alive) return;
         setClient(c);
@@ -525,7 +525,7 @@ export default function ClientDetail() {
               {generatingStatement ? "Generating…" : "Statement"}
             </button>
             <button
-              onClick={() => navigate(`/invoices/create`)}
+              onClick={() => navigate(`/invoices/create?client_id=${clientId}`)}
               className="text-xs text-blue-600 border border-blue-200 rounded px-2.5 py-1 hover:bg-blue-50"
             >
               + New Invoice

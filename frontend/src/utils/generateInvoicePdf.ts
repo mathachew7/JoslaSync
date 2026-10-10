@@ -56,6 +56,13 @@ interface InvoiceData {
   additionalInformation?: string;
   status?: string; // <- STATUS (e.g., "Invoice", "Estimate") shown in header, distinct from invoiceTitle
   termsAndConditions?: string; // overrides default boilerplate if provided
+
+  // Amount already paid against this invoice (if any). When > 0, the PDF adds
+  // a small "Payments Received" table and a "Balance Due" line below the total.
+  amountPaid?: number;
+  paymentDate?: string; // fallback date when `payments` isn't provided (defaults to invoiceDate)
+  // Full ledger, one row per entry (preferred over the amountPaid/paymentDate fallback above).
+  payments?: Array<{ date: string; note: string; amount: number }>;
 }
 
 export function getDefaultTerms(companyName: string, companyEmail: string): string {
@@ -93,7 +100,7 @@ ${companyName} reserves the right to amend these Terms & Conditions at any time.
 }
 
 /**
- * Generates a professional-looking invoice PDF with 15mm margins, centered Billing Address,
+ * Generates a professional-looking invoice PDF with 15mm margins, left-aligned Customer/Billing/Shipping columns,
  * navy dark blue text color (RGB 0,0,51), right-aligned bold "Total in Words," thin lines
  * above footers on all pages, borderless table with alternating row shades, and other
  * specified features. Uses form data and opens the PDF in a new tab.
@@ -196,16 +203,17 @@ export const generateInvoicePdf = (data: InvoiceData, opts?: { returnDoc?: boole
 
   // (Removed the old "Centered Invoice Title" entirely to keep title separate from status)
 
-  // --- Customer, Billing, Shipping Details (Three Columns) ---
-  const customerX = marginX;             // left aligned
-  const billingX = pageWidth / 2;        // centered column
-  const shippingX = pageWidth - marginX; // right aligned
+  // --- Customer, Billing, Shipping Details (Three Columns, all left-aligned) ---
+  const columnWidth = (pageWidth - 2 * marginX) / 3;
+  const customerX = marginX;
+  const billingX = marginX + columnWidth;
+  const shippingX = marginX + 2 * columnWidth;
 
   doc.setFontSize(10);
   doc.setFont("helvetica", "bold");
   doc.text("Customer", customerX, currentY);
-  doc.text("Billing Address", billingX, currentY, { align: "center" });
-  doc.text("Shipping Address", shippingX, currentY, { align: "right" });
+  doc.text("Billing Address", billingX, currentY);
+  doc.text("Shipping Address", shippingX, currentY);
   currentY += 5;
 
   // Build address lines with fixed 4-row layout:
@@ -244,26 +252,26 @@ export const generateInvoicePdf = (data: InvoiceData, opts?: { returnDoc?: boole
 
   // Row 1: Customer Name / (Addr1 + Addr2) / (Addr1 + Addr2)
   doc.text(cName, customerX, currentY);
-  doc.text(billLine1, billingX, currentY, { align: "center" });
-  doc.text(shipLine1, shippingX, currentY, { align: "right" });
+  doc.text(billLine1, billingX, currentY);
+  doc.text(shipLine1, shippingX, currentY);
   currentY += 4;
 
   // Row 2: Company (optional) / City / City
   if (cCompany) doc.text(cCompany, customerX, currentY);
-  doc.text(billLine2, billingX, currentY, { align: "center" });
-  doc.text(shipLine2, shippingX, currentY, { align: "right" });
+  doc.text(billLine2, billingX, currentY);
+  doc.text(shipLine2, shippingX, currentY);
   currentY += 4;
 
   // Row 3: Phone / (State + Zip) / (State + Zip)
   doc.text(data.clientPhone || "3142158155", customerX, currentY);
-  doc.text(billLine3, billingX, currentY, { align: "center" });
-  doc.text(shipLine3, shippingX, currentY, { align: "right" });
+  doc.text(billLine3, billingX, currentY);
+  doc.text(shipLine3, shippingX, currentY);
   currentY += 4;
 
   // Row 4: Email / Country / Country
   doc.text(data.clientEmail || "client@example.com", customerX, currentY);
-  doc.text(billLine4, billingX, currentY, { align: "center" });
-  doc.text(shipLine4, shippingX, currentY, { align: "right" });
+  doc.text(billLine4, billingX, currentY);
+  doc.text(shipLine4, shippingX, currentY);
   currentY += 10;
 
   // --- Optional Invoice Title (separate from STATUS). If blank, show NOTHING. ---
@@ -417,12 +425,86 @@ export const generateInvoicePdf = (data: InvoiceData, opts?: { returnDoc?: boole
     currentY += totalsLineHeight;
   }
 
-  // Total
+  // Total (always the full invoice amount, regardless of payments)
+  const amountPaid = Math.max(0, data.amountPaid || 0);
+  const balanceDue = Math.max(0, data.total - amountPaid);
   doc.setFont("helvetica", "normal");
   doc.text("Total:", labelX, currentY);
   doc.setFont("helvetica", "bold");
   doc.text(`$${data.total.toFixed(2)}`, valueX, currentY, { align: "right" });
   currentY += totalsLineHeight;
+
+  // Small "Payments Received" table + Balance Due — only when a payment has been recorded.
+  // Renders one row per ledger entry when `data.payments` is provided; otherwise falls back
+  // to a single synthetic row built from `amountPaid`/`paymentDate` for older callers.
+  if (amountPaid > 0) {
+    const rows = (data.payments && data.payments.length > 0)
+      ? data.payments
+      : [{ date: data.paymentDate || data.invoiceDate || "", note: "Payment received", amount: amountPaid }];
+
+    currentY += 4;
+
+    const payColWidths = [40, 110, 30]; // Date | Note | Amount — total 180mm
+    const payHeaders = ["Date", "Note", "Amount"];
+    const payRowHeight = 7;
+
+    const drawPayHeader = () => {
+      doc.setFillColor(240, 240, 240);
+      doc.rect(tableStartX, currentY, tableWidth, payRowHeight, "F");
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "bold");
+      let payHeaderX = tableStartX;
+      payHeaders.forEach((header, i) => {
+        const align = i === 2 ? "right" : "left";
+        const xOffset = i === 2 ? payColWidths[i] - cellPadding : cellPadding;
+        doc.text(header, payHeaderX + xOffset, currentY + payRowHeight / 2, { align, baseline: "middle" });
+        payHeaderX += payColWidths[i];
+      });
+      currentY += payRowHeight;
+    };
+
+    drawPayHeader();
+
+    doc.setFont("helvetica", "normal");
+    rows.forEach((row, i) => {
+      if (currentY + payRowHeight + 40 > pageHeight - marginY) {
+        doc.addPage();
+        currentY = marginY;
+        drawPayHeader();
+        doc.setFont("helvetica", "normal");
+      }
+      doc.setFillColor(i % 2 === 0 ? 248 : 252, i % 2 === 0 ? 248 : 252, i % 2 === 0 ? 248 : 252);
+      doc.rect(tableStartX, currentY, tableWidth, payRowHeight, "F");
+      let payCellX = tableStartX;
+      doc.text(row.date || "", payCellX + cellPadding, currentY + payRowHeight / 2, { baseline: "middle" });
+      payCellX += payColWidths[0];
+      doc.text(row.note || "Payment received", payCellX + cellPadding, currentY + payRowHeight / 2, { baseline: "middle" });
+      payCellX += payColWidths[1];
+      const amt = Number(row.amount) || 0;
+      doc.text(`${amt < 0 ? "-" : ""}$${Math.abs(amt).toFixed(2)}`, payCellX + payColWidths[2] - cellPadding, currentY + payRowHeight / 2, { align: "right", baseline: "middle" });
+      currentY += payRowHeight;
+    });
+    currentY += 6;
+
+    if (currentY + 40 > pageHeight - marginY) {
+      doc.addPage();
+      currentY = marginY;
+    }
+
+    // Balance Due — highlighted banner so it's impossible to miss
+    currentY += 2;
+    const balanceBoxHeight = 10;
+    doc.setFillColor(0, 0, 51);
+    doc.rect(tableStartX, currentY, tableWidth, balanceBoxHeight, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.text("Balance Due:", tableStartX + cellPadding, currentY + balanceBoxHeight / 2, { baseline: "middle" });
+    doc.text(`$${balanceDue.toFixed(2)}`, tableStartX + tableWidth - cellPadding, currentY + balanceBoxHeight / 2, { align: "right", baseline: "middle" });
+    doc.setTextColor(0, 0, 51);
+    doc.setFontSize(9);
+    currentY += balanceBoxHeight + 4;
+  }
 
   // Total in Words with Horizontal Lines
   currentY += 8;
@@ -430,10 +512,12 @@ export const generateInvoicePdf = (data: InvoiceData, opts?: { returnDoc?: boole
   doc.setDrawColor(200, 200, 200);
   doc.line(marginX, currentY, pageWidth - marginX, currentY);
   currentY += 4;
-  const totalInWords = "United States Dollar " + convertNumberToWords(data.total) + " Only";
+  const wordsAmount = amountPaid > 0 ? balanceDue : data.total;
+  const wordsLabel = amountPaid > 0 ? "Balance Due in Words" : "Total in Words";
+  const totalInWords = "United States Dollar " + convertNumberToWords(wordsAmount) + " Only";
   doc.setFontSize(9);
   doc.setFont("helvetica", "bold");
-  doc.text(`Total in Words: ${totalInWords}`, pageWidth - marginX, currentY, { align: "right" });
+  doc.text(`${wordsLabel}: ${totalInWords}`, pageWidth - marginX, currentY, { align: "right" });
   currentY += 4;
   doc.setLineWidth(0.1);
   doc.setDrawColor(200, 200, 200);

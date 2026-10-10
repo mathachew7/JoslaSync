@@ -1,7 +1,7 @@
 // src/pages/InvoiceDetail.jsx
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useParams, Link, useNavigate } from "react-router-dom";
-import { getInvoiceById, updateInvoice, voidInvoice, deleteInvoice, cloneInvoice, issueInvoice, recordPayment, adjustPayment, sendInvoiceEmail, sendReminder, acceptQuote, getInvoiceEvents } from "../../api/invoices";
+import { getInvoiceById, updateInvoice, voidInvoice, deleteInvoice, cloneInvoice, issueInvoice, recordPayment, adjustPayment, listPayments, voidPayment, sendInvoiceEmail, sendReminder, acceptQuote, getInvoiceEvents } from "../../api/invoices";
 import { getCompanyProfile, getCompanySettings } from "../../api/company";
 import { getClient } from "../../api/clients";
 import { generateInvoicePdf } from "../../utils/generateInvoicePdf";
@@ -383,6 +383,8 @@ export default function InvoiceDetail() {
       discountAmount: discountAmountView,
       tax: taxView,
       total: totalView,
+      amountPaid: Number(inv.amount_paid ?? 0),
+      paymentDate: (inv.updated_at || "").slice(0, 10) || inv.invoice_date,
       additionalInformation: inv.additional_information_raw || "",
       footerMessage: inv.footer_message || "Thank you for your business!",
       termsAndConditions: companyUI?.terms_and_conditions || reminderConfig?.terms_template || "",
@@ -401,6 +403,23 @@ export default function InvoiceDetail() {
     totalView,
     reminderConfig,
   ]);
+
+  // Fetch the live payment ledger (active entries only) for the PDF's Payments Received table.
+  const fetchPaymentRows = async () => {
+    if (Number(invoice?.amount_paid ?? 0) <= 0) return [];
+    try {
+      const rows = await listPayments(invoice.id);
+      return rows
+        .filter((p) => p.status === "ACTIVE")
+        .map((p) => ({
+          date: (p.created_at || "").slice(0, 10),
+          note: p.note || (p.kind === "CORRECTION" ? "Payment correction" : "Payment received"),
+          amount: Number(p.amount),
+        }));
+    } catch {
+      return []; // falls back to the single synthetic amountPaid row inside generateInvoicePdf
+    }
+  };
 
   const handleViewPdf = async () => {
     if (!pdfPayload) {
@@ -423,7 +442,8 @@ export default function InvoiceDetail() {
         payload = { ...pdfPayload, companyLogoDataUrl: b64 };
       } catch { /* skip logo if fetch fails */ }
     }
-    generateInvoicePdf(payload);
+    const payments = await fetchPaymentRows();
+    generateInvoicePdf({ ...payload, payments });
   };
 
   const handleSend = async () => {
@@ -449,7 +469,8 @@ export default function InvoiceDetail() {
         } catch { /* skip */ }
       }
       // Use generateInvoicePdf to get blob output
-      const pdfDoc = generateInvoicePdf(payload, { returnDoc: true });
+      const payments = await fetchPaymentRows();
+      const pdfDoc = generateInvoicePdf({ ...payload, payments }, { returnDoc: true });
       const pdfBase64 = pdfDoc
         ? pdfDoc.output("datauristring").split(",")[1]
         : "";
@@ -525,16 +546,17 @@ export default function InvoiceDetail() {
     setForm((f) => {
       const next = { ...f };
       const updated = [...next.lineItems];
-      updated[index][field] =
-        field === "quantity" || field === "price"
-          ? Math.max(0, parseFloat(value) || 0)
-          : value;
+      if (field === "quantity" || field === "price") {
+        updated[index][field] = value === "" ? "" : Math.max(0, parseFloat(value) || 0);
+      } else {
+        updated[index][field] = value;
+      }
       next.lineItems = updated;
       return next;
     });
   };
   const addLineItem = () =>
-    setForm((f) => ({ ...f, lineItems: [...f.lineItems, { description: "", quantity: 1, price: 0 }] }));
+    setForm((f) => ({ ...f, lineItems: [...f.lineItems, { description: "", quantity: "", price: "" }] }));
   const removeLineItem = (index) =>
     setForm((f) => {
       if (f.lineItems.length === 1) return f;
@@ -821,7 +843,7 @@ export default function InvoiceDetail() {
                     setInvoice(issued);
                   } catch (err) {
                     setDialogType("error");
-                    setDialogMessage("Failed to accept quote.");
+                    setDialogMessage("Failed to accept estimate.");
                     setDialogOpen(true);
                   } finally {
                     setSaving(false);
@@ -891,15 +913,17 @@ export default function InvoiceDetail() {
               </>
             )}
 
-            {/* Send by email — INVOICE only */}
+            {/* Send by email — INVOICE only, paid add-on */}
             {!isVoid && !isDraft && !isQuote && !editMode && (
-              <button
-                onClick={() => setSendOpen(true)}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm"
-              >
-                <Send size={18} />
-                <span>Send</span>
-              </button>
+              <FeatureGate feature="email_reminders">
+                <button
+                  onClick={() => setSendOpen(true)}
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm"
+                >
+                  <Send size={18} />
+                  <span>Send</span>
+                </button>
+              </FeatureGate>
             )}
 
             <button
@@ -926,7 +950,7 @@ export default function InvoiceDetail() {
       {!editMode && isQuote && (
         <div className="flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-700">
           <FileQuestion size={16} />
-          This is a <b>Quote</b>. Accept it to convert to a numbered invoice.
+          This is an <b>Estimate</b>. Accept it to convert to a numbered invoice.
         </div>
       )}
 
@@ -1190,8 +1214,9 @@ export default function InvoiceDetail() {
                         <input
                           type="number"
                           value={item.quantity}
+                          placeholder="1"
                           onChange={(e) => handleLineItemChange(index, "quantity", e.target.value)}
-                          className={`w-20 border p-2 rounded text-center ${qtyInvalid ? "border-red-300" : ""}`}
+                          className={`w-20 border p-2 rounded text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${qtyInvalid ? "border-red-300" : ""}`}
                           min="0"
                         />
                         {qtyInvalid && <div className="text-xs text-red-600 mt-1">Qty &gt; 0</div>}
@@ -1200,8 +1225,9 @@ export default function InvoiceDetail() {
                         <input
                           type="number"
                           value={item.price}
+                          placeholder="0.00"
                           onChange={(e) => handleLineItemChange(index, "price", e.target.value)}
-                          className={`w-28 border p-2 rounded text-center ${priceInvalid ? "border-red-300" : ""}`}
+                          className={`w-28 border p-2 rounded text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${priceInvalid ? "border-red-300" : ""}`}
                           min="0"
                           step="0.01"
                         />
@@ -1400,18 +1426,22 @@ export default function InvoiceDetail() {
         setDialogOpen={setDialogOpen}
       />}
 
-      {/* Reminder card — overdue + unpaid invoices only */}
-      {!editMode && !isVoid && !isDraft && <ReminderCard
-        invoice={invoice}
-        clientEmail={clientUI.email}
-        reminderConfig={reminderConfig}
-        sendingReminder={sendingReminder}
-        setSendingReminder={setSendingReminder}
-        setInvoice={setInvoice}
-        setDialogType={setDialogType}
-        setDialogMessage={setDialogMessage}
-        setDialogOpen={setDialogOpen}
-      />}
+      {/* Reminder card — overdue + unpaid invoices only, paid add-on */}
+      {!editMode && !isVoid && !isDraft && (
+        <FeatureGate feature="email_reminders">
+          <ReminderCard
+            invoice={invoice}
+            clientEmail={clientUI.email}
+            reminderConfig={reminderConfig}
+            sendingReminder={sendingReminder}
+            setSendingReminder={setSendingReminder}
+            setInvoice={setInvoice}
+            setDialogType={setDialogType}
+            setDialogMessage={setDialogMessage}
+            setDialogOpen={setDialogOpen}
+          />
+        </FeatureGate>
+      )}
 
       {/* Activity timeline */}
       {!editMode && <InvoiceTimeline invoiceId={id} />}
@@ -1638,7 +1668,47 @@ function PaymentCard({ invoice, payAmount, setPayAmount, paying, setPaying, setI
   const [adjustNote, setAdjustNote] = useState("");
   const [adjusting, setAdjusting] = useState(false);
 
+  const [payments, setPayments] = useState([]);
+  const [loadingPayments, setLoadingPayments] = useState(false);
+  const [voidingId, setVoidingId] = useState(null);
+  const activePayments = payments.filter((p) => p.status === "ACTIVE");
+
   const fmt = (n) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number(n || 0));
+
+  const refreshPayments = async () => {
+    setLoadingPayments(true);
+    try {
+      const rows = await listPayments(invoice.id);
+      setPayments(rows);
+    } catch {
+      /* non-fatal; history is supplementary to the totals above */
+    } finally {
+      setLoadingPayments(false);
+    }
+  };
+
+  useEffect(() => {
+    refreshPayments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoice.id]);
+
+  const handleVoid = async (paymentId) => {
+    setVoidingId(paymentId);
+    try {
+      const updated = await voidPayment(invoice.id, paymentId);
+      setInvoice(updated);
+      await refreshPayments();
+      setDialogType("success");
+      setDialogMessage("Payment voided.");
+      setDialogOpen(true);
+    } catch (e) {
+      setDialogType("error");
+      setDialogMessage(e?.response?.data?.detail || "Failed to void payment.");
+      setDialogOpen(true);
+    } finally {
+      setVoidingId(null);
+    }
+  };
 
   const handlePay = async () => {
     const amt = parseFloat(payAmount);
@@ -1648,6 +1718,7 @@ function PaymentCard({ invoice, payAmount, setPayAmount, paying, setPaying, setI
       const updated = await recordPayment(invoice.id, amt);
       setInvoice(updated);
       setPayAmount("");
+      await refreshPayments();
       setDialogType("success");
       setDialogMessage(`Payment of ${fmt(amt)} recorded.`);
       setDialogOpen(true);
@@ -1670,6 +1741,7 @@ function PaymentCard({ invoice, payAmount, setPayAmount, paying, setPaying, setI
       setAdjustMode(false);
       setAdjustValue("");
       setAdjustNote("");
+      await refreshPayments();
       setDialogType("success");
       setDialogMessage(`Payment corrected to ${fmt(val)}.`);
       setDialogOpen(true);
@@ -1767,6 +1839,48 @@ function PaymentCard({ invoice, payAmount, setPayAmount, paying, setPaying, setI
           </div>
         </div>
       )}
+
+      {activePayments.length > 0 && (
+        <div className="mt-5 pt-4 border-t">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Payment History</p>
+          <div className="space-y-1.5">
+            {activePayments.map((p) => {
+              const isCorrection = p.kind === "CORRECTION";
+              const amt = Number(p.amount);
+              return (
+                <div key={p.id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg text-sm bg-gray-50">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-xs shrink-0 text-gray-500">
+                      {new Date(p.created_at).toLocaleDateString()}
+                    </span>
+                    {isCorrection && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 shrink-0">
+                        Correction
+                      </span>
+                    )}
+                    <span className="truncate text-gray-700">
+                      {p.note || (isCorrection ? "Payment correction" : "Payment received")}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className={`font-semibold tabular-nums ${amt < 0 ? "text-red-600" : "text-emerald-600"}`}>
+                      {amt < 0 ? "-" : ""}{fmt(Math.abs(amt))}
+                    </span>
+                    <button
+                      onClick={() => handleVoid(p.id)}
+                      disabled={voidingId === p.id}
+                      title="Void this entry"
+                      className="text-gray-300 hover:text-red-500 disabled:opacity-40"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1852,9 +1966,12 @@ function ReminderCard({ invoice, clientEmail, reminderConfig, sendingReminder, s
 }
 
 /* ── InvoiceTimeline ─────────────────────────────────────────────── */
+const TIMELINE_COLLAPSED_COUNT = 5;
+
 function InvoiceTimeline({ invoiceId }) {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     getInvoiceEvents(invoiceId).then(setEvents).catch(() => {}).finally(() => setLoading(false));
@@ -1874,13 +1991,24 @@ function InvoiceTimeline({ invoiceId }) {
   if (loading) return <div className="text-xs text-gray-400 py-4 text-center animate-pulse">Loading activity…</div>;
   if (!events.length) return null;
 
+  const hasMore = events.length > TIMELINE_COLLAPSED_COUNT;
+  const visibleEvents = expanded ? events : events.slice(0, TIMELINE_COLLAPSED_COUNT);
+
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mt-6">
-      <div className="px-5 py-4 border-b border-gray-100">
+      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
         <p className="text-sm font-semibold text-gray-800">Activity</p>
+        {hasMore && (
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            className="text-xs text-blue-600 hover:underline"
+          >
+            {expanded ? "Show less" : `Show all (${events.length})`}
+          </button>
+        )}
       </div>
-      <div className="px-5 py-4 space-y-4">
-        {events.map((ev) => {
+      <div className={`px-5 py-4 space-y-4 ${expanded ? "max-h-80 overflow-y-auto" : ""}`}>
+        {visibleEvents.map((ev) => {
           const meta = EVENT_META[ev.event_type] || EVENT_META.created;
           const Icon = meta.icon;
           return (

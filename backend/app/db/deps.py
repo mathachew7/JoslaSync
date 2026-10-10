@@ -89,8 +89,8 @@ def get_company_db(request: Request, claims: Dict = Depends(get_token_claims)) -
         yield db
     except (HTTPException, StarletteHTTPException):
         raise  # let FastAPI handle 4xx responses from route handlers normally
-    except Exception:
-        logger.exception(f"❌ Tenant DB error [{db_name}]")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="DB Connection failed")
+    except Exception as exc:
+        logger.exception(f"❌ Tenant DB error [{db_name}]: {exc}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Server error: {exc}")
     finally:
         db.close()

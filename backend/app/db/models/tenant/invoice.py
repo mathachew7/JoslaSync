@@ -41,7 +41,7 @@ class Invoice(BaseTenant, TimestampMixin):
     # References only (no duplication of client/company/user data)
     company_id = Column(Integer, ForeignKey("company_profile.id"), nullable=True)  # set FK if you have tenant company_profile table
     client_id = Column(UUID(as_uuid=True), ForeignKey("clients.id", ondelete="RESTRICT"), nullable=False)
-    created_by_user_id = Column(UUID(as_uuid=True), nullable=True)  # likely from master; just store the UUID
+    created_by_user_id = Column(String(64), nullable=True)  # stored as string; user IDs may be int or UUID
 
     # Status & dates
     status = Column(String(10), nullable=False, server_default="DRAFT")

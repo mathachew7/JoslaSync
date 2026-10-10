@@ -222,7 +222,7 @@ export default function AppLayout() {
         )}
 
         {/* ── Top bar ── */}
-        <header className="h-14 bg-white border-b border-gray-200 flex items-center px-4 gap-3 shrink-0 z-10">
+        <header className="h-14 bg-white border-b border-gray-200 flex items-center px-4 gap-3 shrink-0 z-40 relative">
           <button className="lg:hidden text-gray-500 hover:text-gray-700" onClick={() => setSidebarOpen(true)}>
             <Menu size={20} />
           </button>

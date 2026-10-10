@@ -30,6 +30,7 @@ def send_invoice_email(
     due_date: str,
     pdf_base64: str,
     pdf_filename: str,
+    reply_to: str | None = None,
 ) -> None:
     if not all([settings.SMTP_HOST, settings.SMTP_USER, settings.SMTP_PASS, settings.EMAIL_FROM]):
         raise ValueError("SMTP is not configured. Set SMTP_HOST, SMTP_USER, SMTP_PASS, and EMAIL_FROM in .env")
@@ -65,8 +66,10 @@ def send_invoice_email(
 
     msg = MIMEMultipart("mixed")
     msg["Subject"] = f"Invoice {invoice_no} from {company_name}"
-    msg["From"] = f"{settings.EMAIL_FROM_NAME} <{settings.EMAIL_FROM}>"
+    msg["From"] = f"{company_name} via {settings.EMAIL_FROM_NAME} <{settings.EMAIL_FROM}>"
     msg["To"] = to_email
+    if reply_to:
+        msg["Reply-To"] = reply_to
 
     msg.attach(MIMEText(html_body, "html"))
 
@@ -91,6 +94,7 @@ def send_reminder_email(
     due_date: str,
     days_overdue: int,
     reminder_count: int,
+    reply_to: str | None = None,
 ) -> None:
     urgency = "Friendly Reminder" if reminder_count == 1 else ("Second Notice" if reminder_count == 2 else "Final Notice")
     html_body = f"""
@@ -128,8 +132,10 @@ def send_reminder_email(
     """
     msg = MIMEMultipart("mixed")
     msg["Subject"] = f"[{urgency}] Invoice {invoice_no} is Overdue — {company_name}"
-    msg["From"] = f"{settings.EMAIL_FROM_NAME} <{settings.EMAIL_FROM}>"
+    msg["From"] = f"{company_name} via {settings.EMAIL_FROM_NAME} <{settings.EMAIL_FROM}>"
     msg["To"] = to_email
+    if reply_to:
+        msg["Reply-To"] = reply_to
     msg.attach(MIMEText(html_body, "html"))
 
     logger.info(f"🔔 Sending reminder #{reminder_count} for invoice {invoice_no} to {to_email}")

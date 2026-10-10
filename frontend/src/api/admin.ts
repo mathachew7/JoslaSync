@@ -39,8 +39,10 @@ export async function getAdminStats(): Promise<AdminStats> {
   return data;
 }
 
-export async function listTenants(): Promise<Tenant[]> {
-  const { data } = await API.get<Tenant[]>("/api/admin/tenants");
+export async function listTenants(includeArchived = false): Promise<Tenant[]> {
+  const { data } = await API.get<Tenant[]>("/api/admin/tenants", {
+    params: includeArchived ? { include_archived: true } : undefined,
+  });
   return data;
 }
 
@@ -54,8 +56,21 @@ export async function getTenant(id: number): Promise<Tenant> {
   return data;
 }
 
-export async function updateTenantStatus(id: number, status: "active" | "suspended"): Promise<Tenant> {
+export async function updateTenantStatus(id: number, status: "active" | "suspended" | "archived"): Promise<Tenant> {
   const { data } = await API.put<Tenant>(`/api/admin/tenants/${id}/status`, { status });
+  return data;
+}
+
+export async function updateTenantName(id: number, companyName: string): Promise<Tenant> {
+  const { data } = await API.put<Tenant>(`/api/admin/tenants/${id}`, { company_name: companyName });
+  return data;
+}
+
+export async function addTenantUser(id: number, usernameOrEmail: string, tempPassword: string): Promise<Tenant> {
+  const { data } = await API.post<Tenant>(`/api/admin/tenants/${id}/users`, {
+    username_or_email: usernameOrEmail,
+    temp_password: tempPassword,
+  });
   return data;
 }
 

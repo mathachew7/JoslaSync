@@ -23,7 +23,7 @@ const STATUS_STYLES = {
   INVOICE: { label: "Issued",  bg: "bg-emerald-50", text: "text-emerald-700", ring: "ring-emerald-200" },
   DRAFT:   { label: "Draft",   bg: "bg-amber-50",   text: "text-amber-700",   ring: "ring-amber-200"   },
   VOID:    { label: "Void",    bg: "bg-red-50",     text: "text-red-700",     ring: "ring-red-200"     },
-  QUOTE:   { label: "Quote",   bg: "bg-violet-50",  text: "text-violet-700",  ring: "ring-violet-200"  },
+  QUOTE:   { label: "Estimate", bg: "bg-violet-50",  text: "text-violet-700",  ring: "ring-violet-200"  },
 };
 
 export default function Dashboard() {

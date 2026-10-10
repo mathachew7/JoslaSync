@@ -7,7 +7,7 @@ from fastapi import HTTPException, status
 
 from app.core.logger import logger
 from app.schemas.admin import TenantCreate, TenantRead, TenantUserRead, AdminStats, ResetPasswordResponse, TenantFeaturesOut
-from app.db.models.master.tenant_features import TenantFeature, VALID_FEATURES
+from app.db.models.master.tenant_features import TenantFeature, VALID_FEATURES, default_enabled
 from app.repositories.auth_repo import AuthRepository
 from app.repositories.company_profile_repo import CompanyProfileRepository
 from app.utils.security import hash_password
@@ -31,8 +31,10 @@ class AdminService:
         self.auth_repo = AuthRepository()
         self.company_repo = CompanyProfileRepository()
 
-    def list_tenants(self, db: Session) -> list[TenantRead]:
+    def list_tenants(self, db: Session, include_archived: bool = False) -> list[TenantRead]:
         companies = self.company_repo.get_all_companies(db)
+        if not include_archived:
+            companies = [c for c in companies if (c.status or "active") != "archived"]
         return [
             _tenant_read(c, self.auth_repo.get_users_by_company_id(db, c.id))
             for c in companies
@@ -85,6 +87,35 @@ class AdminService:
         updated = self.company_repo.update_company_status(db, company, new_status)
         return _tenant_read(updated, self.auth_repo.get_users_by_company_id(db, updated.id))
 
+    def update_tenant_name(self, company_id: int, company_name: str, db: Session) -> TenantRead:
+        company = self.company_repo.get_by_id(db, company_id)
+        if not company:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+        if self.company_repo.master_exists_by_name(db, company_name) and company.company_name != company_name:
+            raise HTTPException(status_code=400, detail=f"Company '{company_name}' already exists")
+        updated = self.company_repo.update_company_name(db, company, company_name)
+        return _tenant_read(updated, self.auth_repo.get_users_by_company_id(db, updated.id))
+
+    def add_tenant_user(self, company_id: int, username_or_email: str, temp_password: str, db: Session) -> TenantRead:
+        company = self.company_repo.get_by_id(db, company_id)
+        if not company:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+        existing = self.auth_repo.get_user_by_login(db, username_or_email)
+        if existing:
+            raise HTTPException(status_code=400, detail=f"'{username_or_email}' is already registered")
+
+        identifier = username_or_email
+        username = identifier.split("@")[0] if "@" in identifier else identifier
+        email = identifier if "@" in identifier else f"{identifier}@placeholder.local"
+
+        hashed = hash_password(temp_password)
+        self.auth_repo.create_tenant_user(
+            db, username=username, email=email, hashed_password=hashed, company_id=company.id,
+        )
+        logger.info(f"✅ Admin added user '{username}' to company {company_id}")
+        return _tenant_read(company, self.auth_repo.get_users_by_company_id(db, company.id))
+
     def reset_user_password(self, user_id: int, db: Session) -> ResetPasswordResponse:
         user = self.auth_repo.get_user_by_id(db, user_id)
         if not user:
@@ -118,7 +149,7 @@ class AdminService:
     def _get_features_dict(self, company_id: int, db: Session) -> dict:
         rows = db.query(TenantFeature).filter(TenantFeature.company_id == company_id).all()
         existing = {r.feature_key: r.enabled for r in rows}
-        return {key: existing.get(key, True) for key in VALID_FEATURES}
+        return {key: existing.get(key, default_enabled(key)) for key in VALID_FEATURES}
 
     def get_tenant_features(self, company_id: int, db: Session) -> TenantFeaturesOut:
         if not self.company_repo.get_by_id(db, company_id):
@@ -146,7 +177,7 @@ class AdminService:
 
         now = datetime.now(timezone.utc)
         active = sum(1 for c in companies if (c.status or "active") == "active")
-        suspended = len(companies) - active
+        suspended = sum(1 for c in companies if c.status == "suspended")
         this_month = sum(
             1 for c in companies
             if c.created_at and c.created_at.year == now.year and c.created_at.month == now.month

@@ -246,6 +246,27 @@ export function adjustPayment(id: UUID, amount_paid: number, note?: string) {
   return api.put<InvoiceRead>(`/api/invoices/${id}/payment`, { amount_paid, note }).then(r => r.data);
 }
 
+export type PaymentRecord = {
+  id: UUID;
+  invoice_id: UUID;
+  amount: number;
+  kind: "PAYMENT" | "CORRECTION";
+  status: "ACTIVE" | "VOID";
+  note?: string | null;
+  recorded_by?: string | null;
+  created_at: string;
+  voided_at?: string | null;
+  voided_by?: string | null;
+};
+
+export function listPayments(id: UUID) {
+  return api.get<PaymentRecord[]>(`/api/invoices/${id}/payments`).then(r => r.data);
+}
+
+export function voidPayment(id: UUID, paymentId: UUID) {
+  return api.post<InvoiceRead>(`/api/invoices/${id}/payments/${paymentId}/void`).then(r => r.data);
+}
+
 export function sendReminder(id: UUID) {
   return api.post<InvoiceRead>(`/api/invoices/${id}/remind`).then(r => r.data);
 }

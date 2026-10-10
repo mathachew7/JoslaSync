@@ -6,7 +6,10 @@ from sqlalchemy.orm import Session
 from app.core.logger import logger
 from app.db.database import get_db
 from app.db.deps import require_super_admin
-from app.schemas.admin import TenantCreate, TenantRead, TenantStatusUpdate, AdminStats, ResetPasswordResponse, FeatureFlagUpdate, TenantFeaturesOut
+from app.schemas.admin import (
+    TenantCreate, TenantRead, TenantStatusUpdate, AdminStats, ResetPasswordResponse,
+    FeatureFlagUpdate, TenantFeaturesOut, TenantNameUpdate, AddTenantUserRequest,
+)
 from app.services.admin_service import AdminService
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -34,11 +37,12 @@ def get_stats(
 
 @router.get("/tenants", response_model=List[TenantRead])
 def list_tenants(
+    include_archived: bool = False,
     _: dict = Depends(require_super_admin),
     db: Session = Depends(get_db),
 ):
-    logger.info("➡️ GET /admin/tenants")
-    return service.list_tenants(db)
+    logger.info(f"➡️ GET /admin/tenants | include_archived={include_archived}")
+    return service.list_tenants(db, include_archived=include_archived)
 
 
 @router.post("/tenants", response_model=TenantRead, status_code=201)
@@ -70,6 +74,28 @@ def update_tenant_status(
 ):
     logger.info(f"➡️ PUT /admin/tenants/{company_id}/status | status={body.status}")
     return service.update_tenant_status(company_id, body.status, db)
+
+
+@router.put("/tenants/{company_id}", response_model=TenantRead)
+def update_tenant_name(
+    company_id: int,
+    body: TenantNameUpdate,
+    _: dict = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    logger.info(f"➡️ PUT /admin/tenants/{company_id} | company_name={body.company_name}")
+    return service.update_tenant_name(company_id, body.company_name, db)
+
+
+@router.post("/tenants/{company_id}/users", response_model=TenantRead, status_code=201)
+def add_tenant_user(
+    company_id: int,
+    body: AddTenantUserRequest,
+    _: dict = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    logger.info(f"➡️ POST /admin/tenants/{company_id}/users | id={body.username_or_email}")
+    return service.add_tenant_user(company_id, body.username_or_email, body.temp_password, db)
 
 
 @router.get("/tenants/{company_id}/features", response_model=TenantFeaturesOut)

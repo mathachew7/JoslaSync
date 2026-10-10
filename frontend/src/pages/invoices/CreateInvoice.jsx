@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Plus, Trash2, AlertTriangle, ChevronDown, ChevronUp, Loader2, Search, X } from "lucide-react";
 import { listClients } from "../../api/clients";
 import { getCompanyProfile } from "../../api/company";
@@ -33,6 +33,7 @@ const parseApiError = (err) => {
 
 export default function CreateInvoice() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
 
   // Company + clients
@@ -42,7 +43,7 @@ export default function CreateInvoice() {
   const [clientsLoading, setClientsLoading] = useState(false);
 
   // Core invoice fields
-  const [selectedClientId, setSelectedClientId] = useState("");
+  const [selectedClientId, setSelectedClientId] = useState(() => searchParams.get("client_id") || "");
   const [clientSearch, setClientSearch]         = useState("");
   const [clientDropOpen, setClientDropOpen]     = useState(false);
   const clientDropRef                           = useRef(null);
@@ -53,7 +54,7 @@ export default function CreateInvoice() {
 
   // Line items
   const [lineItems, setLineItems] = useState([
-    { description: "", quantity: 1, price: 0 },
+    { description: "", quantity: "", price: "" },
   ]);
 
   // Discount
@@ -196,15 +197,20 @@ export default function CreateInvoice() {
   const onLineChange = (idx, field, value) => {
     setLineItems((prev) => {
       const next = [...prev];
-      next[idx] = {
-        ...next[idx],
-        [field]: field === "description" ? value : Math.max(0, parseFloat(value) || 0),
-      };
+      let nextValue;
+      if (field === "description") {
+        nextValue = value;
+      } else if (value === "") {
+        nextValue = "";
+      } else {
+        nextValue = Math.max(0, parseFloat(value) || 0);
+      }
+      next[idx] = { ...next[idx], [field]: nextValue };
       return next;
     });
   };
 
-  const addLine   = () => setLineItems((p) => [...p, { description: "", quantity: 1, price: 0 }]);
+  const addLine   = () => setLineItems((p) => [...p, { description: "", quantity: "", price: "" }]);
   const removeLine = (idx) => setLineItems((p) => p.length > 1 ? p.filter((_, i) => i !== idx) : p);
 
   const handleSave = async (saveStatus = "INVOICE") => {
@@ -495,8 +501,9 @@ export default function CreateInvoice() {
                         type="number"
                         value={item.quantity}
                         min="0"
+                        placeholder="1"
                         onChange={(e) => onLineChange(idx, "quantity", e.target.value)}
-                        className={`w-full border rounded px-2 py-1.5 text-sm text-center focus:outline-none ${qtyBad ? "border-red-400" : "border-gray-300 focus:border-blue-400"}`}
+                        className={`w-full border rounded px-2 py-1.5 text-sm text-center focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${qtyBad ? "border-red-400" : "border-gray-300 focus:border-blue-400"}`}
                       />
                       {qtyBad && <p className="text-xs text-red-500 mt-0.5 text-center">&gt; 0</p>}
                     </td>
@@ -506,8 +513,9 @@ export default function CreateInvoice() {
                         value={item.price}
                         min="0"
                         step="0.01"
+                        placeholder="0.00"
                         onChange={(e) => onLineChange(idx, "price", e.target.value)}
-                        className={`w-full border rounded px-2 py-1.5 text-sm text-center focus:outline-none ${priceBad ? "border-red-400" : "border-gray-300 focus:border-blue-400"}`}
+                        className={`w-full border rounded px-2 py-1.5 text-sm text-center focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${priceBad ? "border-red-400" : "border-gray-300 focus:border-blue-400"}`}
                       />
                       {priceBad && <p className="text-xs text-red-500 mt-0.5 text-center">&gt; 0</p>}
                     </td>
@@ -680,7 +688,7 @@ export default function CreateInvoice() {
             disabled={saving}
             className="px-4 py-2 text-sm rounded border border-amber-300 text-amber-700 hover:bg-amber-50 transition disabled:opacity-60"
           >
-            {saving ? <Loader2 size={14} className="animate-spin inline" /> : "Save as Quote"}
+            {saving ? <Loader2 size={14} className="animate-spin inline" /> : "Save as Estimate"}
           </button>
         </FeatureGate>
         <button
