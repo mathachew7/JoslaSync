@@ -422,7 +422,7 @@ def send_invoice(
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         logger.exception(f"💥 /invoices/{invoice_id}/send | {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to send email.")
 
     logger.info(f"✅ /invoices/{invoice_id}/send | sent to {payload.to_email}")
     return {"message": f"Invoice {inv.invoice_no} sent to {payload.to_email}"}
@@ -480,7 +480,7 @@ def remind_invoice(
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         logger.exception(f"💥 remind failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to send reminder: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to send reminder.")
 
     inv.last_reminder_sent_at = today.isoformat()
     inv.reminder_count = new_count

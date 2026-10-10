@@ -1,4 +1,5 @@
 import logging
+import sys
 from logging.handlers import RotatingFileHandler
 import os
 
@@ -16,9 +17,17 @@ logger.setLevel(logging.INFO)
 
 # Avoid duplicate handlers
 if not logger.handlers:
-    handler = RotatingFileHandler(
+    formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
+
+    # Container stdout — this is what `docker logs` / Coolify's Runtime Logs tab show.
+    # Without this, the file handler below writes into the container's ephemeral
+    # filesystem only, so every log line is invisible in prod and lost on redeploy.
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.setFormatter(formatter)
+    logger.addHandler(stream_handler)
+
+    file_handler = RotatingFileHandler(
         LOG_FILE, maxBytes=5_000_000, backupCount=5
     )
-    formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
