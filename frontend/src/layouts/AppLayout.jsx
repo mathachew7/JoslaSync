@@ -111,7 +111,7 @@ export default function AppLayout() {
   const navigate = useNavigate();
   const { user, ready, token, logout, viewingTenant, setViewingTenant } = useAuth();
 
-  const isSuperAdmin = user?.role === "super_admin";
+  const isSuperAdmin = user?.role === "super_admin" || user?.role === "master";
 
   useEffect(() => {
     if (isSuperAdmin) {

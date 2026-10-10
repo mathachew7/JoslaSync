@@ -29,7 +29,7 @@ import { useAuth } from "../context/AuthContext";
 function RequireSuperAdmin({ children }) {
   const { user, ready } = useAuth();
   if (!ready || !user) return null;
-  return user.role === "super_admin" ? children : <Navigate to="/dashboard" replace />;
+  return (user.role === "super_admin" || user.role === "master") ? children : <Navigate to="/dashboard" replace />;
 }
 
 export default function AppRoutes() {
