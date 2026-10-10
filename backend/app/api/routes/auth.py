@@ -74,6 +74,23 @@ def me(claims: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     if not username:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
 
+    # Master login is a hardcoded credential, not a row in the users table —
+    # build its identity straight from the token claims, same as the login endpoint.
+    if claims.get("role") == "master":
+        return {
+            "user": {
+                "id": 0,
+                "username": "master",
+                "email": claims.get("email", settings.MASTER_EMAIL),
+                "role": "master",
+                "must_change_password": False,
+            },
+            "company": {
+                "db_name": db_name,
+                "company_name": "Master",
+            },
+        }
+
     user = auth_repo.get_user_by_username(db, username)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
